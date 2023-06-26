@@ -1,0 +1,18 @@
+src = $(wildcard *.c) $(wildcard */*.c)
+obj = $(src:.c=.o)
+
+LDFLAGS  = -lmorpho -L/opt/homebrew/lib
+CFLAGS   = $(EXTCFLAGS) -O3 -I/opt/homebrew/include -I/usr/local/include/morpho
+
+morpho6: $(obj)
+	$(CC) -o $@ $^ $(LDFLAGS) $(CFLAGS)
+
+.PHONY: clean
+clean:
+	rm -f $(obj) morpho6
+
+.PHONY: install
+install: morpho6
+	cp morpho6 /usr/local/bin/morpho6
+	make clean 
+	
