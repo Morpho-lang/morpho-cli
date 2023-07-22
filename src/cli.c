@@ -265,7 +265,7 @@ void cli(clioptions opt) {
                 morpho_disassemble(p, NULL);
             }
             if (opt & CLI_RUN) {
-                //success=morpho_debug(v, p);
+                success=morpho_debug(v, p);
                 if (!success) {
                     cli_reporterror(morpho_geterror(v), v);
                     err=*morpho_geterror(v);
@@ -318,7 +318,7 @@ void cli_run(const char *in, clioptions opt) {
             }
             if (opt & CLI_RUN) {
                 if (opt & CLI_DEBUG) {
-                    //success=morpho_debug(v, p);
+                    success=morpho_debug(v, p);
                 } else if (opt & CLI_PROFILE) {
                     success=morpho_profile(v, p);
                 } else {
