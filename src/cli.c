@@ -211,6 +211,7 @@ void cli_help (lineditor *edit, char *query, error *err, bool avail) {
 /** @brief Provide a command line interface */
 void cli(clioptions opt) {
     #ifdef MORPHO_LONG_BANNER
+        // Original ASCII art source - https://www.asciiart.eu/animals/insects/butterflies
         printf(BLU " ___   ___ \n" RESET);
         printf(BLU "(" CYN " @ " GRY"\\Y/" CYN " @ " BLU ") " RESET "  |  morpho " MORPHO_VERSIONSTRING "  | \U0001F44B Type 'help' or '?' for help\n");
         printf(BLU " \\" CYN"__" GRY"+|+" CYN"__" BLU"/  " RESET "  |  Documentation: https://morpho-lang.readthedocs.io/en/latest/ \n");
@@ -218,7 +219,6 @@ void cli(clioptions opt) {
     #else
         printf("\U0001F98B morpho " /* MORPHO_VERSIONSTRING*/ "0.6.0" "  | \U0001F44B Type 'help' or '?' for help\n");
     #endif
-    // Original ASCII art source - https://www.asciiart.eu/animals/insects/butterflies
     cli_file=NULL;
     
     /* Set up program and compiler */
