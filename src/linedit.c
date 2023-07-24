@@ -1212,18 +1212,6 @@ int linedit_getwidth(lineditor *edit) {
 
 /** Initialize a line editor */
 void linedit_init(lineditor *edit) {
-    /*
-    char *str = "👽🦋👋👩🏾‍🦰👱🏾🧑🏾‍⚖️AöЖ€𝄞";
-    int x,y,x1;
-    linedit_enablerawmode();
-    for (char *c=str; *c!='\0'; c+=linedit_utf8numberofbytes(c)) {
-        linedit_getcursorposition(&x, &y);
-        write(STDOUT_FILENO, c, linedit_utf8numberofbytes(c));
-        linedit_getcursorposition(&x1, &y);
-        printf(" %i\r\n",x1-x);
-    }
-    linedit_disablerawmode();*/
-    
     if (!edit) return;
     edit->color=NULL;
     edit->ncols=0;
