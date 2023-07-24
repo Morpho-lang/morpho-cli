@@ -216,7 +216,7 @@ void cli(clioptions opt) {
         printf(BLU " \\" CYN"__" GRY"+|+" CYN"__" BLU"/  " RESET "  |  Documentation: https://morpho-lang.readthedocs.io/en/latest/ \n");
         printf(BLU"  {" CYN"_" BLU "/ \\" CYN "_" BLU"}   " RESET "  |  Code: https://github.com/Morpho-lang/morpho \n\n");
     #else
-        printf("\U0001F98B morpho " MORPHO_VERSIONSTRING "  | \U0001F44B Type 'help' or '?' for help\n");
+        printf("\U0001F98B morpho " /* MORPHO_VERSIONSTRING*/ "0.6.0" "  | \U0001F44B Type 'help' or '?' for help\n");
     #endif
     // Original ASCII art source - https://www.asciiart.eu/animals/insects/butterflies
     cli_file=NULL;
