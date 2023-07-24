@@ -652,7 +652,7 @@ void linedit_setdefaulttext(linedit_string *out) {
 /** @brief Writes a control sequence to set a given color */
 void linedit_setcolor(linedit_string *out, linedit_color col) {
     char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[%um", (col==LINEDIT_DEFAULTCOLOR ? 0: 30+col));
+    sprintf(code, "\033[%im", (col==LINEDIT_DEFAULTCOLOR ? 0: 30+col));
     linedit_stringaddcstring(out, code);
 }
 
@@ -732,10 +732,29 @@ void linedit_addcstringwithselection(lineditor *edit, char *in, size_t offset, s
     }
 }
 
+/** Compare two colormap structs */
+int linedit_colormapcmp(const void *l, const void *r) {
+    linedit_colormap *a = (linedit_colormap *) l;
+    linedit_colormap *b = (linedit_colormap *) r;
+    
+    return a->type - b->type;
+}
+
+/** Returns a color matching tokentype type */
+linedit_color linedit_colorfromtokentype(lineditor *edit, linedit_tokentype type) {
+    linedit_colormap key = { .type = type, .col = LINEDIT_DEFAULTCOLOR };
+    
+    linedit_colormap *val = bsearch(&key, edit->color->col, edit->color->ncols, sizeof(linedit_colormap), linedit_colormapcmp);
+    
+    if (val) return val->col;
+    
+    return LINEDIT_DEFAULTCOLOR;
+}
+
 /** Print a string with syntax coloring */
 void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_string *out) {
     linedit_tokenizer tokenizer=edit->color->tokenizer;
-    linedit_color *cols=edit->color->col, col=LINEDIT_DEFAULTCOLOR;
+    linedit_color col=LINEDIT_DEFAULTCOLOR;
     linedit_token tok;
     unsigned int iter=0;
     void *ref=NULL;
@@ -752,7 +771,7 @@ void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_stri
             }
             
             /* Set the color */
-            if (tok.type<edit->color->ncols) col=cols[tok.type];
+            col = linedit_colorfromtokentype(edit, tok.type);
             
             /* Copy the token across */
             if (tok.length>0) {
@@ -1094,22 +1113,27 @@ char *linedit(lineditor *edit) {
 /** @brief Configures syntax coloring
  *  @param edit         Line editor to configure
  *  @param tokenizer    A function to be called that will find the next token from a string
- *  @param cols         An array of colors, one entry for each token type
- *  @param ncols        Number of entries in the color array */
-void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_color *cols, unsigned int ncols) {
+ *  @param cols         A color map from token types to token colors */
+void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_colormap *cols) {
     if (!edit) return;
+    if (!cols) return;
     if (edit->color) free(edit->color);
+    int ncols;
     
-    edit->color = malloc(sizeof(linedit_syntaxcolordata)+ncols*sizeof(linedit_color));
+    for (ncols=0; cols[ncols].type!=LINEDIT_ENDCOLORMAP; ncols++);
     
-    if (edit->color) {
-        edit->color->tokenizer=tokenizer;
-        edit->color->ncols=ncols;
-        edit->color->lexwarning=false; 
-        for (unsigned int i=0; i<ncols; i++) {
-            edit->color->col[i]=cols[i];
-        }
+    edit->color = malloc(sizeof(linedit_syntaxcolordata)+ncols*sizeof(linedit_colormap));
+    
+    if (!edit->color) return;
+    
+    edit->color->tokenizer=tokenizer;
+    edit->color->ncols=ncols;
+    edit->color->lexwarning=false;
+    for (unsigned int i=0; i<ncols; i++) {
+        edit->color->col[i]=cols[i];
     }
+    
+    qsort(edit->color->col, ncols, sizeof(linedit_colormap), linedit_colormapcmp);
 }
 
 /** @brief Configures autocomplete
@@ -1217,6 +1241,7 @@ void linedit_init(lineditor *edit) {
 void linedit_clear(lineditor *edit) {
     if (!edit) return;
     if (edit->color) {
+        free(edit->color->col);
         free(edit->color);
         edit->color=NULL;
     }

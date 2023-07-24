@@ -48,97 +48,100 @@ void cli_reporterror(error *err, vm *v) {
 const char *cli_file;
 
 /** Define colors for different token types */
-linedit_color cli_tokencolors[] = {
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_NONE
+linedit_colormap cli_tokencolors[] = {
+    { TOKEN_NEWLINE,            LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_NEWLINE
+    { TOKEN_QUESTION,           LINEDIT_YELLOW       },
     
-    LINEDIT_YELLOW,                                // TOKEN_QUESTION
+    { TOKEN_STRING,             LINEDIT_BLUE         },
+    { TOKEN_INTERPOLATION,      LINEDIT_BLUE         },
+    { TOKEN_INTEGER,            LINEDIT_BLUE         },
+    { TOKEN_NUMBER,             LINEDIT_BLUE         },
+    { TOKEN_SYMBOL,             LINEDIT_CYAN         },
     
-    LINEDIT_BLUE,                                  // TOKEN_STRING
-    LINEDIT_BLUE,                                  // TOKEN_INTERPOLATION
-    LINEDIT_BLUE,                                  // TOKEN_INTEGER
-    LINEDIT_BLUE,                                  // TOKEN_NUMBER
-    LINEDIT_CYAN,                                  // TOKEN_SYMBOL
-    LINEDIT_MAGENTA,                               // TOKEN_TRUE
-    LINEDIT_MAGENTA,                               // TOKEN_FALSE
-    LINEDIT_MAGENTA,                               // TOKEN_NIL
-    LINEDIT_MAGENTA,                               // TOKEN_SELF
-    LINEDIT_MAGENTA,                               // TOKEN_SUPER
-    LINEDIT_BLUE,                                  // TOKEN_IMAG
+    { TOKEN_LEFTPAREN,          LINEDIT_DEFAULTCOLOR },
+    { TOKEN_RIGHTPAREN,         LINEDIT_DEFAULTCOLOR },
+    { TOKEN_LEFTSQBRACKET,      LINEDIT_DEFAULTCOLOR },
+    { TOKEN_RIGHTSQBRACKET,     LINEDIT_DEFAULTCOLOR },
+    { TOKEN_LEFTCURLYBRACKET,   LINEDIT_DEFAULTCOLOR },
+    { TOKEN_RIGHTCURLYBRACKET,  LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_LEFTPAREN
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_RIGHTPAREN
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_LEFTSQBRACKET
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_RIGHTSQBRACKET
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_LEFTCURLYBRACKET
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_RIGHTCURLYBRACKET
-
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_COLON
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_SEMICOLON
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_COMMA
+    { TOKEN_COLON,              LINEDIT_DEFAULTCOLOR },
+    { TOKEN_SEMICOLON,          LINEDIT_DEFAULTCOLOR },
+    { TOKEN_COMMA,              LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_PLUS
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_MINUS
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_STAR
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_SLASH
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_CIRCUMFLEX
+    { TOKEN_PLUS,               LINEDIT_DEFAULTCOLOR },
+    { TOKEN_MINUS,              LINEDIT_DEFAULTCOLOR },
+    { TOKEN_STAR,               LINEDIT_DEFAULTCOLOR },
+    { TOKEN_SLASH,              LINEDIT_DEFAULTCOLOR },
+    { TOKEN_CIRCUMFLEX,         LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_PLUSPLUS
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_MINUSMINUS
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_PLUSEQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_MINUSEQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_STAREQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_SLASHEQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_HASH
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_AT
+    { TOKEN_PLUSPLUS,           LINEDIT_DEFAULTCOLOR },
+    { TOKEN_MINUSMINUS,         LINEDIT_DEFAULTCOLOR },
+    { TOKEN_PLUSEQ,             LINEDIT_DEFAULTCOLOR },
+    { TOKEN_MINUSEQ,            LINEDIT_DEFAULTCOLOR },
+    { TOKEN_STAREQ,             LINEDIT_DEFAULTCOLOR },
+    { TOKEN_SLASHEQ,            LINEDIT_DEFAULTCOLOR },
+    { TOKEN_HASH,               LINEDIT_DEFAULTCOLOR },
+    { TOKEN_AT,                 LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_DOT
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_DOTDOT
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_DOTDOT
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_EXCLAMATION
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_AMP
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_VBAR
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_DBLAMP
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_DBLVBAR
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_EQUAL
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_EQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_NEQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_LT
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_GT
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_LTEQ
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_GTEQ
+    { TOKEN_DOT,                LINEDIT_DEFAULTCOLOR },
+    { TOKEN_DOTDOT,             LINEDIT_DEFAULTCOLOR },
+    { TOKEN_DOTDOTDOT,          LINEDIT_DEFAULTCOLOR },
+    { TOKEN_EXCLAMATION,        LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_MAGENTA,                               // TOKEN_PRINT
-    LINEDIT_MAGENTA,                               // TOKEN_VAR
-    LINEDIT_MAGENTA,                               // TOKEN_IF
-    LINEDIT_MAGENTA,                               // TOKEN_ELSE
-    LINEDIT_MAGENTA,                               // TOKEN_IN
-    LINEDIT_MAGENTA,                               // TOKEN_WHILE
-    LINEDIT_MAGENTA,                               // TOKEN_FOR
-    LINEDIT_MAGENTA,                               // TOKEN_DO
-    LINEDIT_MAGENTA,                               // TOKEN_BREAK
-    LINEDIT_MAGENTA,                               // TOKEN_CONTINUE
-    LINEDIT_MAGENTA,                               // TOKEN_FUNCTION
-    LINEDIT_MAGENTA,                               // TOKEN_RETURN
-    LINEDIT_MAGENTA,                               // TOKEN_CLASS
-    LINEDIT_MAGENTA,                               // TOKEN_IMPORT
-    LINEDIT_MAGENTA,                               // TOKEN_AS
-    LINEDIT_MAGENTA,                               // TOKEN_IS
-    LINEDIT_MAGENTA,                               // TOKEN_WITH
-    LINEDIT_MAGENTA,                               // TOKEN_TRY
-    LINEDIT_MAGENTA,                               // TOKEN_CATCH
+    { TOKEN_AMP,                LINEDIT_DEFAULTCOLOR },
+    { TOKEN_VBAR,               LINEDIT_DEFAULTCOLOR },
+    { TOKEN_DBLAMP,             LINEDIT_DEFAULTCOLOR },
+    { TOKEN_DBLVBAR,            LINEDIT_DEFAULTCOLOR },
+    { TOKEN_EQUAL,              LINEDIT_DEFAULTCOLOR },
+    { TOKEN_EQ,                 LINEDIT_DEFAULTCOLOR },
+    { TOKEN_NEQ,                LINEDIT_DEFAULTCOLOR },
+    { TOKEN_LT,                 LINEDIT_DEFAULTCOLOR },
+    { TOKEN_GT,                 LINEDIT_DEFAULTCOLOR },
+    { TOKEN_LTEQ,               LINEDIT_DEFAULTCOLOR },
+    { TOKEN_GTEQ,               LINEDIT_DEFAULTCOLOR },
     
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_INCOMPLETE
-    LINEDIT_DEFAULTCOLOR,                          // TOKEN_ERROR
-    LINEDIT_DEFAULTCOLOR                           // TOKEN_EOF
+    
+    { TOKEN_TRUE,               LINEDIT_MAGENTA      },
+    { TOKEN_FALSE,              LINEDIT_MAGENTA      },
+    { TOKEN_NIL,                LINEDIT_MAGENTA      },
+    { TOKEN_SELF,               LINEDIT_MAGENTA      },
+    { TOKEN_SUPER,              LINEDIT_MAGENTA      },
+    { TOKEN_IMAG,               LINEDIT_BLUE         },
+    
+    { TOKEN_PRINT,              LINEDIT_MAGENTA      },
+    { TOKEN_VAR,                LINEDIT_MAGENTA      },
+    { TOKEN_IF,                 LINEDIT_MAGENTA      },
+    { TOKEN_ELSE,               LINEDIT_MAGENTA      },
+    { TOKEN_IN,                 LINEDIT_MAGENTA      },
+    { TOKEN_WHILE,              LINEDIT_MAGENTA      },
+    { TOKEN_FOR,                LINEDIT_MAGENTA      },
+    { TOKEN_DO,                 LINEDIT_MAGENTA      },
+    { TOKEN_BREAK,              LINEDIT_MAGENTA      },
+    { TOKEN_CONTINUE,           LINEDIT_MAGENTA      },
+    { TOKEN_FUNCTION,           LINEDIT_MAGENTA      },
+    { TOKEN_RETURN,             LINEDIT_MAGENTA      },
+    { TOKEN_CLASS,              LINEDIT_MAGENTA      },
+    { TOKEN_IMPORT,             LINEDIT_MAGENTA      },
+    { TOKEN_AS,                 LINEDIT_MAGENTA      },
+    { TOKEN_IS,                 LINEDIT_MAGENTA      },
+    { TOKEN_WITH,               LINEDIT_MAGENTA      },
+    { TOKEN_TRY,                LINEDIT_MAGENTA      },
+    { TOKEN_CATCH,              LINEDIT_MAGENTA      },
+    
+    { TOKEN_SHEBANG,            LINEDIT_DEFAULTCOLOR },
+    { TOKEN_INCOMPLETE,         LINEDIT_DEFAULTCOLOR },
+    { TOKEN_EOF,                LINEDIT_DEFAULTCOLOR },
+    { LINEDIT_ENDCOLORMAP,      LINEDIT_DEFAULTCOLOR }
 };
 
-/** A tokenizer for syntax coloring that leverages the parser's lexer */
+/** A tokenizer for syntax coloring that leverages the morpho lexer */
 bool cli_lex(char *in, void **ref, linedit_token *out) {
     lexer *l=(lexer *) *ref;
     token tok;
     error err;
+    error_init(&err);
     
     /* On the first call, allocate and initialize the tokenizer */
     if (!l) {
@@ -149,7 +152,7 @@ bool cli_lex(char *in, void **ref, linedit_token *out) {
     if (lex(l, &tok, &err)) {
         out->start=(char *) tok.start;
         out->length=tok.length;
-        out->type=(unsigned int) tok.type;
+        out->type=(linedit_tokentype) tok.type;
         return (tok.type!=TOKEN_EOF);
     }
     
@@ -231,7 +234,7 @@ void cli(clioptions opt) {
     
     linedit_init(&edit);
     linedit_setprompt(&edit, CLI_PROMPT);
-    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors, TOKEN_EOF);
+    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
     linedit_autocomplete(&edit, cli_complete);
     
     error err; /* Error structure that received messages from the compiler and VM */
@@ -400,7 +403,7 @@ static void cli_printline(lineditor *edit, int line, char *prompt, char *src, in
 void cli_disassemblewithsrc(program *p, char *src) {
     lineditor edit;
     linedit_init(&edit);
-    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors, TOKEN_EOF);
+    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
     
     int line=1, length=0;
     for (unsigned int i=0; src[i]!='\0'; i++) {
@@ -422,7 +425,7 @@ void cli_list(const char *in, int start, int end) {
     
     if (src) {
         linedit_init(&edit);
-        linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors, TOKEN_EOF);
+        linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
         
         int line=1, length=0;
         for (unsigned int i=0; src[i]!='\0'; i++) {

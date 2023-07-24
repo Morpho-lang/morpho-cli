@@ -40,9 +40,12 @@ typedef struct {
  * Tokenization
  * ----------------------- */
 
+/** Token types */
+typedef int linedit_tokentype;
+
 /** lineditor tokens */
 typedef struct {
-    unsigned int type;
+    linedit_tokentype type;
     char *start;
     size_t length;
 } linedit_token;
@@ -94,12 +97,19 @@ typedef enum {
     LINEDIT_NONE
 } linedit_emphasis;
 
+#define LINEDIT_ENDCOLORMAP -1
+
+typedef struct {
+    linedit_tokentype type;
+    linedit_color col;
+} linedit_colormap;
+
 /** Structure to hold all information related to syntax coloring */
 typedef struct {
     linedit_tokenizer tokenizer; /* A tokenizer function */
+    bool lexwarning;
     unsigned int ncols;          /* Number of colors provided */
-    bool lexwarning; 
-    linedit_color col[];         /* Array of colors, one for each
+    linedit_colormap col[];         /* Array of colors, one for each
                                     token type */
 } linedit_syntaxcolordata;
 
@@ -166,9 +176,8 @@ char *linedit(lineditor *edit);
 /** @brief Configures syntax coloring
  *  @param edit         Line editor to configure
  *  @param tokenizer    A function to be called that will find the next token from a string
- *  @param cols         An array of colors, one entry for each token type
- *  @param ncols        Number of entries in the color array */
-void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_color *cols, unsigned int ncols);
+ *  @param map         Map from token types to colors */
+void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_colormap *cols);
 
 /** @brief Configures autocomplete
  *  @param edit         Line editor to configure
