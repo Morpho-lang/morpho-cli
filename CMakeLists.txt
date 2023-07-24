@@ -19,6 +19,16 @@ get_filename_component(MORPHO_INCLUDE ${MORPHO_HEADER} DIRECTORY)
 # Add morpho headers to MORPHO_INCLUDE
 target_include_directories(morpho6 PUBLIC ${MORPHO_INCLUDE})
 
+# Add morpho headers in subfolders to MORPHO_INCLUDE
+file(GLOB morpho_subdirectories LIST_DIRECTORIES true ${MORPHO_INCLUDE}/*)
+foreach(dir ${morpho_subdirectories})
+    IF(IS_DIRECTORY ${dir})
+        target_include_directories(morpho6 PUBLIC ${dir})
+    ELSE()
+        CONTINUE()
+    ENDIF()
+endforeach()
+
 # Locate libmorpho
 find_library(MORPHO_LIBRARY
     NAMES morpho libmorpho

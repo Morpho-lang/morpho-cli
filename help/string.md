@@ -15,11 +15,11 @@ Strings may incorporate any valid UTF-8 sequence, and you can insert special cha
     "\n" // newline
     "\r" // line feed
     "\t" // tab
-    "\xNN" // specify an ASCII character with two hex digits
-    "\uNNNN" // specify a unicode character with four hex digits
-    "\UNNNNNNNN" // specify a unicode character with eight hex digits
+    "\xhh" // specify an ASCII character with two hex digits
+    "\uhhhh" // specify a unicode character with four hex digits
+    "\Uhhhhhhhh" // specify a unicode character with eight hex digits
 
-Unicode characters are converted to UTF8 automatically.
+Unicode characters are converted to UTF8 by the morpho compiler.
 
 You can also create strings using the constructor function `String`, which takes any number of parameters:
 
