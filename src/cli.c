@@ -197,6 +197,8 @@ bool cli_multiline(char *in) {
             case ')': nb-=1; break;
             case '{': nb+=1; break;
             case '}': nb-=1; break;
+            case '[': nb+=1; break;
+            case ']': nb-=1; break;
             default: break; 
         }
     }
@@ -252,7 +254,7 @@ void cli(clioptions opt) {
     linedit_init(&edit);
     linedit_setprompt(&edit, CLI_PROMPT);
     linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
-    linedit_multiline(&edit, cli_multiline, "|");
+    linedit_multiline(&edit, cli_multiline, CLI_CONTINUATIONPROMPT);
     linedit_autocomplete(&edit, cli_complete);
     
     error err; /* Error structure that received messages from the compiler and VM */

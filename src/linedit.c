@@ -534,6 +534,11 @@ void linedit_home(void) {
     linedit_write("\r");
 }
 
+/** @brief Line feed */
+void linedit_linefeed(void) {
+    linedit_write("\n");
+}
+
 /** @brief Moves the cursor to the specified position */
 void linedit_movetocolumn(int posn) {
     char code[LINEDIT_CODESTRINGSIZE];
@@ -547,7 +552,7 @@ void linedit_movetocolumn(int posn) {
 void linedit_moveup(int n) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (n>0) {
-        sprintf(code, "\033[255B\033[%uA", n);
+        sprintf(code, "\033[%uA", n);
         linedit_write(code);
     }
 }
@@ -562,10 +567,13 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
         if (*s=='\r') { // Reset on a carriage return
             if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
             i=0;
-        } else if (*s=='\n') { // Clear to end of line and retern
+        } else if (*s=='\n') { // Clear to end of line and return
             if (!linedit_write("\x1b[K\n\r")) return;
             write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length);
             i=0;
+        } else if (*s=='\t') {
+            if (!linedit_write("  ")) return;
+            i+=1;
         } else if (iscntrl(*s)) {
             if (*s=='\033') { // A terminal control character
                 char *ctl=s; // First identify its length
@@ -900,7 +908,7 @@ void linedit_redraw(lineditor *edit) {
         end=start+edit->ncols-1;
     }*/
     
-    linedit_moveup(nlines); // Move to the starting line
+    linedit_moveup(ypos); // Move to the starting line
     linedit_home();
     linedit_write(edit->prompt.string);
     
@@ -1023,6 +1031,7 @@ bool linedit_processkeypress(lineditor *edit) {
                 if (linedit_shouldmultiline(edit)) {
                     linedit_stringaddcstring(&edit->current, "\n");
                     linedit_advanceposition(edit, +1);
+                    linedit_linefeed(); // Ensure we move to the next line before redrawing
                 } else return false;
                 break; 
             case TAB:
@@ -1034,6 +1043,9 @@ bool linedit_processkeypress(lineditor *edit) {
                         linedit_stringaddcstring(&edit->current, sugg);
                         linedit_setposition(edit, -1);
                     }
+                } else { // Otherwise simply add a tab character
+                    linedit_stringaddcstring(&edit->current, "\t");
+                    linedit_advanceposition(edit, +1);
                 }
                 break;
             case CTRL: /* Handle ctrl+letter combos */
@@ -1148,7 +1160,8 @@ void linedit_supported(lineditor *edit) {
     if (edit->current.length>0) {
         linedit_historyadd(edit, edit->current.string);
     }
-    printf("\n");
+    
+    linedit_linefeed(); // Move to next line
 }
 
 /* **********************************************************************
@@ -1165,7 +1178,7 @@ char *linedit(lineditor *edit) {
     
     switch (linedit_checksupport()) {
         case LINEDIT_NOTTTY: linedit_noterminal(edit); break;
-        case LINEDIT_UNSUPPORTED: //linedit_unsupported(edit); break;
+        case LINEDIT_UNSUPPORTED: linedit_unsupported(edit); break;
         case LINEDIT_SUPPORTED: linedit_supported(edit); break;
     }
     
