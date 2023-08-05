@@ -6,28 +6,8 @@
 
 #include "linedit.h"
 
-/* **********************************************************************
- * Keypresses
- * ********************************************************************** */
-
-/** Identifies the type of keypress */
-typedef enum {
-    UNKNOWN, CHARACTER,
-    RETURN, TAB, DELETE,
-    UP, DOWN, LEFT, RIGHT,   // Arrow keys
-    HOME, END,               // Home and End
-    SHIFT_LEFT, SHIFT_RIGHT, // Shift+arrow key
-    CTRL,
-} keytype;
-
-/** A single keypress event obtained and processed by the terminal */
-typedef struct {
-    keytype type; /** Type of keypress */
-    char c[5]; /** Up to four bytes of utf8 encoded unicode plus null terminator */
-    int nbytes; /** Number of bytes */
-} keypress;
-
-#define LINEDIT_KEYPRESSGETCHAR(a) ((a)->c[0])
+/** Maximum escape code size */
+#define LINEDIT_CODESTRINGSIZE 24
 
 /* **********************************************************************
  * UTF8 support
@@ -232,7 +212,7 @@ linedit_string *linedit_newstring(char *string) {
 }
 
 /* **********************************************************************
- * String lists
+ * Lists of strings
  * ********************************************************************** */
 
 /** Adds an entry to a string list */
@@ -385,8 +365,12 @@ bool linedit_shouldmultiline(lineditor *edit) {
 }
 
 /* **********************************************************************
- * Terminal driver
+ * Low level terminal
  * ********************************************************************** */
+
+/* ----------------------------------------
+ * Retrieve terminal info
+ * ---------------------------------------- */
 
 void linedit_enablerawmode(void);
 void linedit_disablerawmode(void);
@@ -475,6 +459,10 @@ void linedit_disablerawmode(void) {
     printf("\r"); /** Print a carriage return to ensure we're back on the left hand side */
 }
 
+/* ----------------------------------------
+ * Query terminal
+ * ---------------------------------------- */
+
 #define LINEDIT_CURSORPOSN_BUFFERSIZE 32
 /** @brief Gets the cursor position */
 bool linedit_getcursorposition(int *x, int *y) {
@@ -515,8 +503,57 @@ void linedit_getterminalwidth(lineditor *edit) {
     }
 }
 
-/** @brief Shows visible characters in a column window l...r from a string */
-void linedit_writewindow(lineditor *edit, char *string, int l, int r) {
+/* ----------------------------------------
+ * Output
+ * ---------------------------------------- */
+
+/** @brief Writes a string to the terminal */
+bool linedit_write(char *string) {
+    size_t length=strlen(string);
+    if (write(STDOUT_FILENO, string, length)==-1) {
+        fprintf(stderr, "Error writing to terminal.\n");
+        return false;
+    }
+    return true;
+}
+
+/** @brief Writes a character to the terminal */
+void linedit_writechar(char c) {
+    if (write(STDOUT_FILENO, &c, 1)==-1) {
+        fprintf(stderr, "Error writing to terminal.\n");
+    }
+}
+
+/** @brief Erases the current line */
+void linedit_erasetoendofline(void) {
+    linedit_write("\033[0K");
+}
+
+/** @brief Moves the cursor to the home position */
+void linedit_home(void) {
+    linedit_write("\r");
+}
+
+/** @brief Moves the cursor to the specified position */
+void linedit_movetocolumn(int posn) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (posn>0) {
+        sprintf(code, "\r\033[%uC", posn);
+        linedit_write(code);
+    }
+}
+
+/** @brief Moves the cursor up by n lines */
+void linedit_moveup(int n) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (n>0) {
+        sprintf(code, "\033[255B\033[%uA", n);
+        linedit_write(code);
+    }
+}
+
+/** @brief Renders a string, showing only characters in columns l...r */
+void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
     int i=0;
     int width=0;
     
@@ -524,10 +561,9 @@ void linedit_writewindow(lineditor *edit, char *string, int l, int r) {
         width=linedit_utf8numberofbytes(s);
         if (*s=='\r') { // Reset on a carriage return
             if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
-            write(STDOUT_FILENO, edit->prompt.string, edit->prompt.length);
             i=0;
-        } else if (*s=='\n') { // Reset on a new line
-            if (write(STDOUT_FILENO, "\x1b[K\n\r", strlen("\x1b[K\n\r"))==-1) return;
+        } else if (*s=='\n') { // Clear to end of line and retern
+            if (!linedit_write("\x1b[K\n\r")) return;
             write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length);
             i=0;
         } else if (iscntrl(*s)) {
@@ -544,20 +580,28 @@ void linedit_writewindow(lineditor *edit, char *string, int l, int r) {
     }
 }
 
-/** @brief Writes a string to the terminal */
-void linedit_write(char *string) {
-    size_t length=strlen(string);
-    if (write(STDOUT_FILENO, string, length)==-1) {
-        fprintf(stderr, "Error writing to terminal.\n");
-    }
-}
+/* ----------------------------------------
+ * Handle keypresses
+ * ---------------------------------------- */
 
-/** @brief Writes a character to the terminal */
-void linedit_writechar(char c) {
-    if (write(STDOUT_FILENO, &c, 1)==-1) {
-        fprintf(stderr, "Error writing to terminal.\n");
-    }
-}
+/** Identifies the type of keypress */
+typedef enum {
+    UNKNOWN, CHARACTER,
+    RETURN, TAB, DELETE,
+    UP, DOWN, LEFT, RIGHT,   // Arrow keys
+    HOME, END,               // Home and End
+    SHIFT_LEFT, SHIFT_RIGHT, // Shift+arrow key
+    CTRL,
+} keytype;
+
+/** A single keypress event obtained and processed by the terminal */
+typedef struct {
+    keytype type; /** Type of keypress */
+    char c[5]; /** Up to four bytes of utf8 encoded unicode plus null terminator */
+    int nbytes; /** Number of bytes */
+} keypress;
+
+#define LINEDIT_KEYPRESSGETCHAR(a) ((a)->c[0])
 
 /** Raw codes produced by the terminal */
 enum keycodes {
@@ -566,9 +610,6 @@ enum keycodes {
     ESC_CODE = 27,     // Escape
     DELETE_CODE = 127  // Delete
 };
-
-/** Maximum escape code size */
-#define LINEDIT_CODESTRINGSIZE 24
 
 /** Enable this macro to get reports on unhandled keypresses */
 //#define LINEDIT_DEBUGKEYPRESS
@@ -662,6 +703,10 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
     return true;
 }
 
+/* ----------------------------------------
+ * Add style and emphasis codes to strings
+ * ---------------------------------------- */
+
 /** @brief Writes a control sequence to reset default text */
 void linedit_setdefaulttext(linedit_string *out) {
     char code[LINEDIT_CODESTRINGSIZE];
@@ -686,38 +731,6 @@ void linedit_setemphasis(linedit_string *out, linedit_emphasis emph) {
         case LINEDIT_NONE: break; 
     }
     
-    linedit_stringaddcstring(out, code);
-}
-
-/** @brief Writes a control sequence to move to a given position */
-void linedit_move(linedit_string *out, int posn) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    if (posn>0) {
-        sprintf(code, "\r\033[%uC", posn);
-        linedit_stringaddcstring(out, code);
-    }
-}
-
-/** @brief Writes a control sequence to move up by n lines */
-void linedit_moveup(linedit_string *out, int n) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    if (n>0) {
-        sprintf(code, "\033[255B\033[%uA", n);
-        linedit_stringaddcstring(out, code);
-    }
-}
-
-/** @brief Writes a control sequence to erase the rest of the line */
-void linedit_erasetoendofline(linedit_string *out) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[0K");
-    linedit_stringaddcstring(out, code);
-}
-
-/** @brief Writes a control sequence to erase the whole line */
-void linedit_eraseline(linedit_string *out) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[2K");
     linedit_stringaddcstring(out, code);
 }
 
@@ -841,30 +854,22 @@ void linedit_showstring(lineditor *edit, linedit_string *in, linedit_string *out
     linedit_addcstringwithselection(edit, in->string, 0, in->length, NULL, out);
 }
 
-/** Refreshes a single line */
-void linedit_refreshline(lineditor *edit) {
+/** Refreshes the display */
+void linedit_redraw(lineditor *edit) {
     int sugglength=0;
     linedit_string output; /* Holds the output string */
     linedit_stringinit(&output);
     
-    linedit_eraseline(&output);
+    // Render the current buffer to the output string
     linedit_setdefaulttext(&output);
     
-    int xpos, ypos, nlines;
-    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
-    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
-    
-    linedit_moveup(&output, nlines);
-    linedit_stringappend(&output, "\r", 1);
-    
-    /* Display the current line, syntax colored if available */
     if (edit->color) {
         linedit_syntaxcolorstring(edit, &edit->current, &output);
     } else {
         linedit_showstring(edit, &edit->current, &output);
     }
     
-    /* Display any autocompletion suggestions */
+    // Display any autocompletion suggestions at the end
     if (linedit_aresuggestionsavailable(edit)) {
         char *suggestion = linedit_currentsuggestion(edit);
         linedit_setemphasis(&output, LINEDIT_BOLD);
@@ -872,8 +877,13 @@ void linedit_refreshline(lineditor *edit) {
         sugglength=(int) strlen(suggestion);
     }
     
+    // Reser default text
     linedit_setdefaulttext(&output);
-    //linedit_stringappend(&output, "\r", 1);
+    
+    // Retrieve the current editing position
+    int xpos, ypos, nlines;
+    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
+    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
     
     /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringwidth(&edit->prompt);
@@ -890,12 +900,16 @@ void linedit_refreshline(lineditor *edit) {
         end=start+edit->ncols-1;
     }*/
     
-    /* Move cursor to the requested position */
-    linedit_moveup(&output, nlines-ypos);
-    linedit_move(&output, promptwidth+xpos-start-1);
+    linedit_moveup(nlines); // Move to the starting line
+    linedit_home();
+    linedit_write(edit->prompt.string);
     
-    /* Write the output string to the display */
-    linedit_writewindow(edit, output.string, start, end);
+    // Now render the output string
+    linedit_renderstring(edit, output.string, start, end);
+    linedit_erasetoendofline();
+    
+    linedit_moveup(nlines-ypos);  // Move to the cursor position
+    linedit_movetocolumn(promptwidth+xpos-start);
 
     linedit_stringclear(&output);
 }
@@ -1118,16 +1132,16 @@ void linedit_supported(lineditor *edit) {
     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
     linedit_getterminalwidth(edit);
     linedit_setposition(edit, 0);
-    linedit_refreshline(edit);
+    linedit_redraw(edit);
     
     while (linedit_processkeypress(edit)) {
-        linedit_refreshline(edit);
+        linedit_redraw(edit);
     }
 
     /* Remove any dangling suggestions */
     linedit_stringlistclear(&edit->suggestions);
     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-    linedit_refreshline(edit);
+    linedit_redraw(edit);
     
     linedit_disablerawmode();
     
