@@ -745,6 +745,9 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
                     if (LINEDIT_KEYPRESSGETCHAR(out)>0 && LINEDIT_KEYPRESSGETCHAR(out)<27) { /* Ctrl+character */
                         out->type=CTRL;
                         out->c[0]+='A'-1; /* Return the character code */
+#ifdef LINEDIT_DEBUGKEYPRESS
+                        printf("Ctrl+character: %c\r\n", out->c[0]);
+#endif
                     } else {
 #ifdef LINEDIT_DEBUGKEYPRESS
                         printf("Unhandled keypress: %d\r\n", LINEDIT_KEYPRESSGETCHAR(out));
@@ -1056,14 +1059,6 @@ void linedit_processrightkeypress(lineditor *edit) {
     linedit_advanceposition(edit, +1);
 }
 
-/** @brief Advances the history counter by delta, and ensures it fits on the screen */
-void linedit_processhistorykeypress(lineditor *edit, int delta) {
-    int oldlines=linedit_stringcountlines(&edit->current);
-    linedit_historyadvance(edit, delta);
-    int newlines=linedit_stringcountlines(&edit->current);
-    linedit_changeheight(edit, newlines-oldlines);
-}
-
 /** @brief Obtain and process a single keypress */
 bool linedit_processkeypress(lineditor *edit) {
     keypress key;
@@ -1117,13 +1112,13 @@ bool linedit_processkeypress(lineditor *edit) {
                     linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
                 }
                 
-                linedit_processhistorykeypress(edit, 1);
+                linedit_historyadvance(edit, 1);
                 linedit_setposition(edit, -1);
             }
                 break;
             case DOWN:
                 if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
-                    linedit_processhistorykeypress(edit, -1);
+                    linedit_historyadvance(edit, -1);
                     linedit_setposition(edit, -1);
                 } else if (linedit_aresuggestionsavailable(edit)) {
                     linedit_advancesuggestions(edit, 1);
@@ -1134,7 +1129,6 @@ bool linedit_processkeypress(lineditor *edit) {
                 if (linedit_shouldmultiline(edit)) {
                     linedit_stringaddcstring(&edit->current, "\n");
                     linedit_advanceposition(edit, +1);
-                    linedit_linefeed(); // Ensure we move to the next line before redrawing
                 } else return false;
                 break; 
             case TAB:
@@ -1176,7 +1170,7 @@ bool linedit_processkeypress(lineditor *edit) {
                             linedit_stringappend(&edit->clipboard, edit->current.string+lindx, (size_t) rindx-lindx);
                         }
                         break;
-                    case 'D': /* Delete a character */
+                    case 'D': /* Delete the character underneath the cursor */
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                         linedit_stringdelete(&edit->current, edit->posn, 1);
                         break;
@@ -1255,7 +1249,14 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
+    int nlines=linedit_stringcountlines(&edit->current);
+
     while (linedit_processkeypress(edit)) {
+        int newnlines=linedit_stringcountlines(&edit->current);
+        if (newnlines!=nlines) {
+            linedit_changeheight(edit, newnlines-nlines);
+            nlines=newnlines;
+        }
         linedit_redraw(edit);
     }
 
