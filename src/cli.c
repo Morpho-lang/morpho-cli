@@ -21,24 +21,46 @@
 #define GRY   "\x1B[38;2;128;128;128m"
 #define RESET "\x1B[0m"
 
+/** Displays several strings with a specified style using linedit */
+void cli_displaywithstyle(lineditor *edit, linedit_color col, linedit_emphasis emph, int n, ...) {
+    va_list args;
+    va_start(args, n);
+    for (int i=0; i<n; i++) {
+        char *str = va_arg(args, char *);
+        linedit_displaywithstyle(edit, str, col, emph);
+    }
+    va_end(args);
+}
+
 /** Report an error if one has occurred. */
 void cli_reporterror(error *err, vm *v) {
+    lineditor linedit;
+    linedit_init(&linedit);
+    
     if (err->cat!=ERROR_NONE) {
-        printf("%sError '%s' %s", CLI_ERRORCOLOR, err->id , CLI_NORMALTEXT);
+        cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, "Error '", err->id, "'");
+        
         if (ERROR_ISRUNTIMEERROR(*err)) {
-            printf("%s: %s%s\n", CLI_ERRORCOLOR, err->msg, CLI_NORMALTEXT);
+            cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, ": ", err->msg, "\n");
             morpho_stacktrace(v);
         } else {
-            printf("%s", CLI_ERRORCOLOR);
             if (err->line!=ERROR_POSNUNIDENTIFIABLE && err->posn!=ERROR_POSNUNIDENTIFIABLE) {
-                printf("[line %u char %u", err->line, err->posn);
-                if (err->module) printf(" in module %s", err->module);
-                printf("] ");
+                char posnbuffer[255];
+                sprintf(posnbuffer, " [line %u char %u", err->line, err->posn);
+                linedit_displaywithstyle(&linedit, posnbuffer, CLI_ERRORCOLOR, CLI_NOEMPHASIS);
+                
+                if (err->module) {
+                    cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 2, " in module ", err->module);
+                }
+                
+                linedit_displaywithstyle(&linedit, "]", CLI_ERRORCOLOR, CLI_NOEMPHASIS);
             }
             
-            printf(": %s%s\n", err->msg, CLI_NORMALTEXT);
+            cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, ": ", err->msg, "\n");
         }
     }
+    
+    linedit_clear(&linedit);
 }
 
 /* **********************************************************************

@@ -545,6 +545,11 @@ void linedit_home(void) {
     linedit_write("\r");
 }
 
+/** @brief Moves the cursor to the home position */
+void linedit_defaulttext(void) {
+    linedit_write("\033[0m");
+}
+
 /** @brief Line feed */
 void linedit_linefeed(void) {
     linedit_write("\n");
@@ -913,15 +918,15 @@ void linedit_redraw(lineditor *edit) {
     linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
     linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
     
-    char coords[255];
-    sprintf(coords, "[%i,%i]",xpos,ypos);
-    linedit_stringaddcstring(&output, coords);
+    //char coords[255];
+    //sprintf(coords, "[%i,%i]",xpos,ypos);
+    //linedit_stringaddcstring(&output, coords);
     
     /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringwidth(&edit->prompt);
     int stringwidth=linedit_stringwidth(&edit->current);
     
-    int start=0, end=promptwidth+stringwidth+sugglength+((int) strlen(coords));
+    int start=0, end=promptwidth+stringwidth+sugglength;
     /*if (end>=edit->ncols) {
         // Are we near the start?
         if (promptwidth+edit->posn<edit->ncols) {
@@ -934,6 +939,7 @@ void linedit_redraw(lineditor *edit) {
     
     linedit_moveup(ypos); // Move to the starting line
     linedit_home();
+    linedit_defaulttext();
     linedit_write(edit->prompt.string);
     
     // Now render the output string
@@ -1220,7 +1226,7 @@ char *linedit(lineditor *edit) {
     
     switch (linedit_checksupport()) {
         case LINEDIT_NOTTTY: linedit_noterminal(edit); break;
-        case LINEDIT_UNSUPPORTED: //linedit_unsupported(edit); break;
+        case LINEDIT_UNSUPPORTED: linedit_unsupported(edit); break;
         case LINEDIT_SUPPORTED: linedit_supported(edit); break;
     }
     

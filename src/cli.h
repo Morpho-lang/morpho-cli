@@ -14,28 +14,15 @@
 #include "help.h"
 #include "common.h"
 
+#define CLI_DEFAULTCOLOR LINEDIT_DEFAULTCOLOR
+#define CLI_ERRORCOLOR  LINEDIT_RED
+#define CLI_NOEMPHASIS  LINEDIT_NONE
+
 #define CLI_PROMPT ">"
 #define CLI_CONTINUATIONPROMPT "~"
 #define CLI_QUIT "quit"
 #define CLI_HELP "help"
 #define CLI_SHORT_HELP "?"
-
-#define CLI_NORMALCODE   "\033[0m"
-#define CLI_REDCODE      "\033[0;31m"
-#define CLI_GREENCODE    "\033[0;32m"
-#define CLI_YELLOWCODE   "\033[0;33m"
-#define CLI_BLUECODE     "\033[0;34m"
-#define CLI_PURPLECODE   "\033[0;35m"
-#define CLI_CYANCODE     "\033[0;36m"
-#define CLI_WHITECODE    "\033[0;37m"
-
-#ifdef MORPHO_COLORTERMINAL
-#define CLI_ERRORCOLOR CLI_REDCODE
-#define CLI_NORMALTEXT CLI_NORMALCODE
-#else
-#define CLI_ERRORCOLOR ""
-#define CLI_NORMALTEXT ""
-#endif
 
 #define CLI_RUN                 (1<<0)
 #define CLI_DISASSEMBLE         (1<<1)
