@@ -183,19 +183,47 @@ int linedit_stringwidth(linedit_string *string) {
 
 /** Finds the line and character number for a given position in the string.
  * @param[in] string - the string
- * @param[in] posn - */
+ * @param[in] posn - character position in the string
+ * @param[out] xout - x coordinates corresponding to posn n
+ * @param[out] yout - y */
 void linedit_stringcoordinates(linedit_string *string, int posn, int *xout, int *yout) {
     int x=0, y=0, n=0;
     for (int i=0; i<string->length; n++) {
+        char *c=string->string+i;
         if (n==posn) break;
-        char *c = string->string+i;
-        if (*c == '\n') {
+        if (*c=='\n') {
             x=0; y++;
         } else x++;
         i+=linedit_utf8numberofbytes(c);
     }
     if (xout) *xout = x;
     if (yout) *yout = y;
+}
+
+/** Finds the position in the string for the start of a given line
+ * @param[in] string - the string
+ * @param[in] x - character position or -1 to find the end of the line
+ * @param[in] y - line number
+ * @param[out] posn - position corresponding to   */
+void linedit_stringfindposition(linedit_string *string, int x, int y, int *posn) {
+    int xx=0, yy=0, n=0;
+    for (int i=0; i<string->length; n++) {
+        char *c = string->string+i;
+        if (xx==x && yy==y) break;
+        if (*c=='\n') {
+            xx=0; yy++;
+            if (yy>y) break;
+        }
+        i+=linedit_utf8numberofbytes(c);
+    }
+    if (posn) *posn = n;
+}
+
+/** Counts the number of lines a string occupies */
+int linedit_stringcountlines(linedit_string *string) {
+    int lines;
+    linedit_stringcoordinates(string, -1, NULL, &lines);
+    return lines;
 }
 
 /** Locates a particular posn in a string, returning a pointer to the character */
@@ -329,7 +357,7 @@ void linedit_historyadvance(lineditor *edit, unsigned int n) {
  * Autocompletion
  * ********************************************************************** */
 
-bool lineedit_atendofline(lineditor *edit);
+bool linedit_atend(lineditor *edit);
 
 /** Regenerates the list of autocomplete suggestions */
 void linedit_generatesuggestions(lineditor *edit) {
@@ -337,7 +365,7 @@ void linedit_generatesuggestions(lineditor *edit) {
         linedit_stringlistclear(&edit->suggestions);
         
         if (edit->current.string &&
-            lineedit_atendofline(edit)) {
+            linedit_atend(edit)) {
             (edit->completer) (edit->current.string, edit->cref, &edit->suggestions);
         }
     }
@@ -376,7 +404,7 @@ bool linedit_shouldmultiline(lineditor *edit) {
 }
 
 /* **********************************************************************
- * Low level terminal
+ * Low level interaction with the terminal
  * ********************************************************************** */
 
 /* ----------------------------------------
@@ -536,6 +564,11 @@ void linedit_writechar(char c) {
 }
 
 /** @brief Erases the current line */
+void linedit_eraseline(void) {
+    linedit_write("\033[2K");
+}
+
+/** @brief Erases the rest of the current line */
 void linedit_erasetoendofline(void) {
     linedit_write("\033[0K");
 }
@@ -545,7 +578,7 @@ void linedit_home(void) {
     linedit_write("\r");
 }
 
-/** @brief Moves the cursor to the home position */
+/** @brief Sets default text */
 void linedit_defaulttext(void) {
     linedit_write("\033[0m");
 }
@@ -768,7 +801,7 @@ void linedit_setemphasis(linedit_string *out, linedit_emphasis emph) {
 }
 
 /* **********************************************************************
- * Interface
+ * Utility functions
  * ********************************************************************** */
 
 /** Adds a string with selection highlighting
@@ -917,10 +950,6 @@ void linedit_redraw(lineditor *edit) {
     linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
     linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
     
-    //char coords[255];
-    //sprintf(coords, "[%i,%i]",xpos,ypos);
-    //linedit_stringaddcstring(&output, coords);
-    
     /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringwidth(&edit->prompt);
     int stringwidth=linedit_stringwidth(&edit->current);
@@ -951,7 +980,12 @@ void linedit_redraw(lineditor *edit) {
     linedit_stringclear(&output);
 }
 
-/** Sets the current mode, setting/clearing any state dependent data  */
+/** @brief Gets the current mode */
+lineditormode linedit_getmode(lineditor *edit) {
+    return edit->mode;
+}
+
+/** @brief Sets the current mode, setting/clearing any state dependent data  */
 void linedit_setmode(lineditor *edit, lineditormode mode) {
     if (mode!=LINEDIT_HISTORYMODE) {
         if (edit->mode==LINEDIT_HISTORYMODE) {
@@ -967,27 +1001,11 @@ void linedit_setmode(lineditor *edit, lineditormode mode) {
     edit->mode=mode;
 }
 
-/** Gets the current mode */
-lineditormode linedit_getmode(lineditor *edit) {
-    return edit->mode;
-}
-
 /** Sets the current position
  * @param edit     - the editor
  * @param posn     - position to set, or negative to move to end */
 void linedit_setposition(lineditor *edit, int posn) {
     edit->posn=(posn<0 ? linedit_stringwidth(&edit->current) : posn);
-}
-
-/** Checks if we're at the end of the line */
-bool lineedit_atendofline(lineditor *edit) {
-    return (edit->posn==linedit_stringwidth(&edit->current));
-}
-
-/** Checks if we're at a newline character */
-bool linedit_atnewline(lineditor *edit) {
-    char *c=linedit_stringlocate(&edit->current, edit->posn);
-    return (c && *c=='\n');
 }
 
 /** @brief Advances the position by delta
@@ -999,7 +1017,54 @@ void linedit_advanceposition(lineditor *edit, int delta) {
     if (edit->posn>linewidth) edit->posn=linewidth;
 }
 
-/** Obtain and process a single keypress */
+/** @brief Changes the height of the current line editing session */
+void linedit_changeheight(lineditor *edit, int delta) {
+    if (delta>0) {
+        for (int i=0; i<delta; i++) linedit_linefeed();
+    } else for (int i=0; i>delta; i--) {
+        linedit_eraseline();
+        linedit_moveup(1);
+    }
+}
+
+/** @brief Checks if we're at the end of the input */
+bool linedit_atend(lineditor *edit) {
+    return (edit->posn==linedit_stringwidth(&edit->current));
+}
+
+/** @brief Checks if we're at a newline character */
+bool linedit_atnewline(lineditor *edit) {
+    char *c=linedit_stringlocate(&edit->current, edit->posn);
+    return (c && *c=='\n');
+}
+
+/* **********************************************************************
+ * Actions
+ * ********************************************************************** */
+
+/** @brief Process a left keypress */
+void linedit_processleftkeypress(lineditor *edit) {
+    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+    linedit_advanceposition(edit, -1);
+    if (linedit_atnewline(edit)) linedit_moveup(1);
+}
+
+/** @brief Process a left keypress */
+void linedit_processrightkeypress(lineditor *edit) {
+    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+    if (linedit_atnewline(edit)) linedit_movedown(1);
+    linedit_advanceposition(edit, +1);
+}
+
+/** @brief Advances the history counter by delta, and ensures it fits on the screen */
+void linedit_processhistorykeypress(lineditor *edit, int delta) {
+    int oldlines=linedit_stringcountlines(&edit->current);
+    linedit_historyadvance(edit, delta);
+    int newlines=linedit_stringcountlines(&edit->current);
+    linedit_changeheight(edit, newlines-oldlines);
+}
+
+/** @brief Obtain and process a single keypress */
 bool linedit_processkeypress(lineditor *edit) {
     keypress key;
     bool regeneratesuggestions=true;
@@ -1030,14 +1095,10 @@ bool linedit_processkeypress(lineditor *edit) {
                 linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                 break;
             case LEFT:
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                linedit_advanceposition(edit, -1);
-                if (linedit_atnewline(edit)) linedit_moveup(1);
+                linedit_processleftkeypress(edit);
                 break;
             case RIGHT:
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                if (linedit_atnewline(edit)) linedit_movedown(1);
-                linedit_advanceposition(edit, +1);
+                linedit_processrightkeypress(edit);
                 break;
             case SHIFT_LEFT:
                 linedit_setmode(edit, LINEDIT_SELECTIONMODE);
@@ -1055,19 +1116,14 @@ bool linedit_processkeypress(lineditor *edit) {
                     linedit_setmode(edit, LINEDIT_HISTORYMODE);
                     linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
                 }
-                linedit_historyadvance(edit, +1);
                 
-                // If the number of lines in the history item has changed we need to scroll
-                //int nlines; // Move the display up
-                //linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
-                //for (int i=0; i<nlines-1; i++) linedit_write("\n");
-                
+                linedit_processhistorykeypress(edit, 1);
                 linedit_setposition(edit, -1);
             }
                 break;
             case DOWN:
                 if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
-                    linedit_historyadvance(edit, -1);
+                    linedit_processhistorykeypress(edit, -1);
                     linedit_setposition(edit, -1);
                 } else if (linedit_aresuggestionsavailable(edit)) {
                     linedit_advancesuggestions(edit, 1);
@@ -1098,12 +1154,16 @@ bool linedit_processkeypress(lineditor *edit) {
             case CTRL: /* Handle ctrl+letter combos */
                 switch(LINEDIT_KEYPRESSGETCHAR(&key)) {
                     case 'A': /* Move to start of line */
+                    {
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        edit->posn=0;
+                        
+                        int line;
+                        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
+                        linedit_stringfindposition(&edit->current, 0, line, &edit->posn);
+                    }
                         break;
                     case 'B': /* Move backward */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_advanceposition(edit, -1);
+                        linedit_processleftkeypress(edit);
                         break;
                     case 'C': /* Copy */
                         if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
@@ -1120,13 +1180,15 @@ bool linedit_processkeypress(lineditor *edit) {
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                         linedit_stringdelete(&edit->current, edit->posn, 1);
                         break;
-                    case 'E': /* Move to end of line */
+                    case 'E': { /* Move to end of line */
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_setposition(edit, -1);
+                        int line;
+                        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
+                        linedit_stringfindposition(&edit->current, -1, line, &edit->posn);
+                    }
                         break;
                     case 'F': /* Move forward */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_advanceposition(edit, +1);
+                        linedit_processrightkeypress(edit);
                         break;
                     case 'U': /* Delete whole line */
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
@@ -1154,7 +1216,7 @@ bool linedit_processkeypress(lineditor *edit) {
 }
 
 /* **********************************************************************
- * Interfaces
+ * Line editors for supported and unsupported terminals
  * ********************************************************************** */
 
 /** If we're not attached to a terminal, e.g. a pipe, simply read the
