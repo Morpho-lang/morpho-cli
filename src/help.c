@@ -73,7 +73,7 @@ objecthelptopic *help_newtopic(char *topic, char *file, long int location, objec
 }
 
 /** Free attached data from a help topic */
-void help_cleartopic (objecthelptopic *topic) {
+void help_cleartopic(objecthelptopic *topic) {
     if (topic) {
         dictionary_clear(&topic->subtopics);
         free(topic->file); topic->file=NULL;
