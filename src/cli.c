@@ -11,6 +11,7 @@
 
 #define CLI_BUFFERSIZE 1024
 
+
 #define RED   "\x1B[31m"
 #define GRN   "\x1B[32m"
 #define YEL   "\x1B[33m"
@@ -158,31 +159,31 @@ linedit_colormap cli_tokencolors[] = {
     { LINEDIT_ENDCOLORMAP,      LINEDIT_DEFAULTCOLOR }
 };
 
-/** A tokenizer for syntax coloring that leverages the morpho lexer */
-bool cli_lex(char *in, void **ref, linedit_token *out) {
-    lexer *l=(lexer *) *ref;
+/** A tokenizer for syntax coloring that uses the morpho lexer */
+bool cli_lex(char *in, void *ref, linedit_token *out) {
+    bool success=false;
+    lexer *l=(lexer *) ref;
+    if (!l) return false;
+    lex_init(l, in, 0);
+    
     token tok;
     error err;
     error_init(&err);
-    
-    /* On the first call, allocate and initialize the tokenizer */
-    if (!l) {
-        *ref = l = malloc(sizeof(lexer));
-        lex_init(l, in, 1);
-    }
     
     if (lex(l, &tok, &err)) {
         out->start=(char *) tok.start;
         out->length=tok.length;
         out->type=(linedit_tokentype) tok.type;
-        return (tok.type!=TOKEN_EOF);
+        success=(tok.type!=TOKEN_EOF);
     }
     
-    return false;
+    lex_clear(l);
+    
+    return success;
 }
 
 /** Autocomplete function */
-bool cli_complete(char *in, linedit_stringlist *c) {
+bool cli_complete(char *in, void *ref, linedit_stringlist *c) {
     size_t len=strlen(in);
     
     /* First find the last token in the input */
@@ -210,7 +211,7 @@ bool cli_complete(char *in, linedit_stringlist *c) {
 }
 
 /** Multiline function */
-bool cli_multiline(char *in) {
+bool cli_multiline(char *in, void *ref) {
     int nb=0; 
 
     for (char *c=in; *c!='\0'; c++) {
@@ -268,16 +269,17 @@ void cli(clioptions opt) {
     
     bool help = help_initialize();
     
-    lineditor edit;
-    
     /* Set up VM */
     vm *v = morpho_newvm();
     
+    /* Line editor */
+    lineditor edit;
+    lexer l;
     linedit_init(&edit);
     linedit_setprompt(&edit, CLI_PROMPT);
-    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
-    linedit_multiline(&edit, cli_multiline, CLI_CONTINUATIONPROMPT);
-    linedit_autocomplete(&edit, cli_complete);
+    linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
+    linedit_multiline(&edit, cli_multiline, NULL, CLI_CONTINUATIONPROMPT);
+    linedit_autocomplete(&edit, cli_complete, NULL);
     
     error err; /* Error structure that received messages from the compiler and VM */
     bool success=false; /* Keep track of whether compilation and execution was successful */
@@ -445,7 +447,8 @@ static void cli_printline(lineditor *edit, int line, char *prompt, char *src, in
 void cli_disassemblewithsrc(program *p, char *src) {
     lineditor edit;
     linedit_init(&edit);
-    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
+    lexer l;
+    linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
     
     int line=1, length=0;
     for (unsigned int i=0; src[i]!='\0'; i++) {
@@ -467,7 +470,8 @@ void cli_list(const char *in, int start, int end) {
     
     if (src) {
         linedit_init(&edit);
-        linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
+        lexer l;
+        linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
         
         int line=1, length=0;
         for (unsigned int i=0; src[i]!='\0'; i++) {

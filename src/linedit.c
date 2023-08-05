@@ -1,7 +1,7 @@
 /** @file linedit.c
  *  @author T J Atherton
  *
- *  @brief A line editor with history, autocomplete and syntax highlighting
+ *  @brief A simple UTF8 aware line editor with history, completion, multiline editing and syntax highlighting
  */
 
 #include "linedit.h"
@@ -338,7 +338,7 @@ void linedit_generatesuggestions(lineditor *edit) {
         
         if (edit->current.string &&
             lineedit_atendofline(edit)) {
-            (edit->completer) (edit->current.string, &edit->suggestions);
+            (edit->completer) (edit->current.string, edit->cref, &edit->suggestions);
         }
     }
 }
@@ -371,7 +371,7 @@ void linedit_advancesuggestions(lineditor *edit, unsigned int n) {
 
 /** Test whether we should enter multiline editing mode */
 bool linedit_shouldmultiline(lineditor *edit) {
-    if (edit->multiline && edit->current.string) return (edit->multiline) (edit->current.string);
+    if (edit->multiline && edit->current.string) return (edit->multiline) (edit->current.string, edit->mlref);
     return false; 
 }
 
@@ -828,24 +828,25 @@ int linedit_colormapcmp(const void *l, const void *r) {
 linedit_color linedit_colorfromtokentype(lineditor *edit, linedit_tokentype type) {
     linedit_colormap key = { .type = type, .col = LINEDIT_DEFAULTCOLOR };
     
-    linedit_colormap *val = bsearch(&key, edit->color->col, edit->color->ncols, sizeof(linedit_colormap), linedit_colormapcmp);
-    
-    if (val) return val->col;
+    if (edit->color) {
+        linedit_colormap *val = bsearch(&key, edit->color->col, edit->color->ncols, sizeof(linedit_colormap), linedit_colormapcmp);
+        
+        if (val) return val->col;
+    }
     
     return LINEDIT_DEFAULTCOLOR;
 }
 
 /** Print a string with syntax coloring */
 void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_string *out) {
-    linedit_tokenizer tokenizer=edit->color->tokenizer;
+    linedit_tokenizefn tokenizer=edit->color->tokenizer;
     linedit_color col=LINEDIT_DEFAULTCOLOR;
     linedit_token tok;
     unsigned int iter=0;
-    void *ref=NULL;
     int line=0;
     
     for (char *c=in->string; c!=NULL && *c!='\0';) {
-        bool success = (tokenizer) (c, &ref, &tok);
+        bool success = (tokenizer) (c, edit->color->tokref, &tok);
         /* Get the next token */
         if (success && tok.length>0 && tok.start>=c) {
             size_t padding=tok.start-c;
@@ -867,7 +868,6 @@ void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_stri
         } else {
             col=LINEDIT_DEFAULTCOLOR;
             linedit_addcstringwithselection(edit, c, c-in->string, in->length-(c-in->string), &col, out);
-            if (ref) free(ref);
             return; 
         };
         iter++;
@@ -876,7 +876,6 @@ void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_stri
                 fprintf(stderr, "\n\rLinedit error: Syntax colorer appears to be stuck in an infinite loop; ensure the tokenizer returns false if it doesn't recognize a token.\n");
                 edit->color->lexwarning=true;
             }
-            if (ref) free(ref);
             return;
         }
     }
@@ -1234,44 +1233,51 @@ char *linedit(lineditor *edit) {
 }
 
 /** @brief Configures syntax coloring
- *  @param edit         Line editor to configure
- *  @param tokenizer    A function to be called that will find the next token from a string
- *  @param cols         A color map from token types to token colors */
-void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_colormap *cols) {
+ *  @param[in] edit             Line editor to configure
+ *  @param[in] tokenizer  Callback function that will identify the next token from a string
+ *  @param[in] ref               Reference that will be passed to the tokenizer callback function.
+ *  @param[in] map             Map from token types to colors */
+void linedit_syntaxcolor(lineditor *edit, linedit_tokenizefn tokenizer, void *ref, linedit_colormap *map) {
     if (!edit) return;
-    if (!cols) return;
+    if (!map) return;
     if (edit->color) free(edit->color);
     int ncols;
     
-    for (ncols=0; cols[ncols].type!=LINEDIT_ENDCOLORMAP; ncols++);
+    for (ncols=0; map[ncols].type!=LINEDIT_ENDCOLORMAP; ncols++);
     
     edit->color = malloc(sizeof(linedit_syntaxcolordata)+ncols*sizeof(linedit_colormap));
     
     if (!edit->color) return;
     
     edit->color->tokenizer=tokenizer;
+    edit->color->tokref=ref;
     edit->color->ncols=ncols;
     edit->color->lexwarning=false;
     for (unsigned int i=0; i<ncols; i++) {
-        edit->color->col[i]=cols[i];
+        edit->color->col[i]=map[i];
     }
     
     qsort(edit->color->col, ncols, sizeof(linedit_colormap), linedit_colormapcmp);
 }
 
 /** @brief Configures autocomplete
- *  @param edit         Line editor to configure
- *  @param completer    a function */
-void linedit_autocomplete(lineditor *edit, linedit_completer completer) {
+ *  @param[in] edit               Line editor to configure
+ *  @param[in] completer    Callback function that will identify autocomplete suggestions
+ *  @param[in] ref                 Reference that will be passed to the autocomplete callback function. */
+void linedit_autocomplete(lineditor *edit, linedit_completefn completer, void *ref) {
     if (!edit) return;
     edit->completer=completer;
+    edit->cref=ref;
 }
 
-/** @brief Enables multiline editing
- *  @param edit         Line editor to configure 
- *  @param multiline    Multiline callback function */
-void linedit_multiline(lineditor *edit, linedit_multilinecallback multiline, char *cprompt) {
+/** @brief Configures multiline editing
+ *  @param[in] edit              Line editor to configure
+ *  @param[in] multiline   Callback function to test whether to enter multiline mode
+ *  @param[in] ref                 Reference that will be passed to the multiline callback function.
+ *  @param[in] cprompt        Continuation prompt, or NULL to just reuse the regular prompt */
+void linedit_multiline(lineditor *edit, linedit_multilinefn multiline, void *ref, char *cprompt) {
     edit->multiline=multiline;
+    edit->mlref=ref; 
     linedit_stringclear(&edit->cprompt);
     if (cprompt) {
         linedit_stringaddcstring(&edit->cprompt, cprompt);
@@ -1360,14 +1366,15 @@ void linedit_init(lineditor *edit) {
     linedit_stringinit(&edit->clipboard);
     linedit_setprompt(edit, LINEDIT_DEFAULTPROMPT);
     edit->completer=NULL;
-    edit->multiline=NULL; 
+    edit->cref=NULL;
+    edit->multiline=NULL;
+    edit->mlref=NULL;
 }
 
 /** Finalize a line editor */
 void linedit_clear(lineditor *edit) {
     if (!edit) return;
     if (edit->color) {
-        free(edit->color->col);
         free(edit->color);
         edit->color=NULL;
     }
