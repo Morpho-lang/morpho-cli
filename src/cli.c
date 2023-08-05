@@ -187,6 +187,23 @@ bool cli_complete(char *in, linedit_stringlist *c) {
     return success;
 }
 
+/** Multiline function */
+bool cli_multiline(char *in) {
+    int nb=0; 
+
+    for (char *c=in; *c!='\0'; c++) {
+        switch (*c) {
+            case '(': nb+=1; break; 
+            case ')': nb-=1; break;
+            case '{': nb+=1; break;
+            case '}': nb-=1; break;
+            default: break; 
+        }
+    }
+
+    return (nb>0);
+}
+
 /** Interactive help */
 void cli_help (lineditor *edit, char *query, error *err, bool avail) {
     char *q=query;
@@ -235,6 +252,7 @@ void cli(clioptions opt) {
     linedit_init(&edit);
     linedit_setprompt(&edit, CLI_PROMPT);
     linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
+    linedit_multiline(&edit, cli_multiline, "|");
     linedit_autocomplete(&edit, cli_complete);
     
     error err; /* Error structure that received messages from the compiler and VM */

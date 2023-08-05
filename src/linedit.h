@@ -22,13 +22,15 @@
  * Types
  * ********************************************************************** */
 
+typedef struct linedit_string_s linedit_string;
+
 /** lineditor strings */
-typedef struct slinedit_string {
+struct linedit_string_s {
     size_t capacity;  /** Capacity of the string in bytes */
     size_t length; /** Length in bytes */
     char *string; /** String data */
-    struct slinedit_string *next; /** Enable strings to be chained together */
-} linedit_string;
+    linedit_string *next; /** Enable strings to be chained together */
+} ;
 
 /** A list of strings */
 typedef struct {
@@ -134,6 +136,19 @@ typedef struct {
 typedef bool (*linedit_completer) (char *in, linedit_stringlist *completion);
 
 /* -----------------------
+ * Multiline callback
+ * ----------------------- */
+
+/** @brief Multiline callback
+ *  @params  in          - a string
+ *  @details This user function is called when linedit wants to know whether
+ *           it should enter multiline mode. The function should parse the 
+ *           input and return true if linedit should go to multiline mode or
+ *           false otherwise. Typically, return true if the input is incomplete 
+*/
+typedef bool (*linedit_multilinecallback) (char *in);
+
+/* -----------------------
  * lineditor structure
  * ----------------------- */
 
@@ -153,6 +168,7 @@ typedef struct {
     int sposn;               /* Starting point of a selection */
     int ncols;               /* Number of columns */
     linedit_string prompt;   /* The prompt */
+    linedit_string cprompt;   /* Continuation prompt */
     
     linedit_string current;  /* Current string that's being edited */
     linedit_string clipboard;  /* Copy/paste clipboard */
@@ -162,6 +178,8 @@ typedef struct {
     
     linedit_syntaxcolordata *color; /* Structure to handle syntax coloring */
     linedit_completer completer; /* Autocompletion */
+
+    linedit_multilinecallback multiline; /* Multiline callback */
 } lineditor;
 
 /* **********************************************************************
@@ -185,8 +203,10 @@ void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_c
 void linedit_autocomplete(lineditor *edit, linedit_completer completer);
 
 /** @brief Configures multiline editing
- *  @param edit         Line editor to configure */
-void linedit_multiline(lineditor *edit);
+ *  @param edit         Line editor to configure
+ *  @param multiline  Callback function to test whether to enter multiline mode
+ *  @param cprompt Continuation prompt, or NULL to just reuse the regular prompt */
+void linedit_multiline(lineditor *edit, linedit_multilinecallback multiline, char *cprompt);
 
 /** @brief Adds a completion suggestion
  *  @param completion   completion data structure

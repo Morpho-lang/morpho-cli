@@ -7,24 +7,16 @@
 #include "linedit.h"
 
 /* **********************************************************************
- * Internal types
+ * Keypresses
  * ********************************************************************** */
 
 /** Identifies the type of keypress */
 typedef enum {
-    UNKNOWN,
-    CHARACTER,
-    RETURN,
-    TAB,
-    DELETE,
-    UP,
-    DOWN,
-    LEFT,
-    RIGHT,
-    HOME,
-    END,
-    SHIFT_LEFT,
-    SHIFT_RIGHT,
+    UNKNOWN, CHARACTER,
+    RETURN, TAB, DELETE,
+    UP, DOWN, LEFT, RIGHT,   // Arrow keys
+    HOME, END,               // Home and End
+    SHIFT_LEFT, SHIFT_RIGHT, // Shift+arrow key
     CTRL,
 } keytype;
 
@@ -70,18 +62,18 @@ int linedit_utf8toint(char *c) {
     return ret;
 }
 
-/** @brief Returns a pointer to character i in a utf8 encoded string */
-ssize_t linedit_utf8index(linedit_string *string, size_t i, size_t offset) {
+/** @brief Finds the index of character i in a utf8 encoded string */
+bool linedit_utf8index(linedit_string *string, size_t i, size_t offset, size_t *out) {
     int advance=0;
     size_t nchars=0;
     
     for (ssize_t j=0; j+offset<=string->length; j+=advance, nchars++) {
-        if (nchars==i) return j;
+        if (nchars==i) { *out = j; return true; }
         advance=linedit_utf8numberofbytes(string->string+offset+j);
         if (advance==0) break; // If advance is 0, the string is corrupted; return failure
     }
     
-    return -1;
+    return false;
 }
 
 /* **********************************************************************
@@ -145,8 +137,8 @@ void linedit_stringappend(linedit_string *string, char *c, size_t nbytes) {
  *  @details If the position is after the length of the string
  *           the new characters are instead appended. */
 void linedit_stringinsert(linedit_string *string, size_t posn, char *c, size_t n) {
-    ssize_t offset=linedit_utf8index(string, posn, 0);
-    if (offset<0) return;
+    size_t offset;
+    if (!linedit_utf8index(string, posn, 0, &offset)) return;
     
     if (offset<string->length) {
         if (string->capacity<=string->length+n) {
@@ -167,9 +159,11 @@ void linedit_stringinsert(linedit_string *string, size_t posn, char *c, size_t n
  *  @param[in] posn - Delete characters as a character index
  *  @param[in] n - number of characters to delete */
 void linedit_stringdelete(linedit_string *string, size_t posn, size_t n) {
-    ssize_t offset=linedit_utf8index(string, posn, 0);
-    ssize_t nbytes=linedit_utf8index(string, n, offset);
-    if (offset<0) return;
+    size_t offset;
+    size_t nbytes;
+    
+    if (!linedit_utf8index(string, posn, 0, &offset)) return;
+    if (!linedit_utf8index(string, n, offset, &nbytes)) return;
     
     if (offset<string->length) {
         if (offset+nbytes<string->length) {
@@ -201,6 +195,23 @@ int linedit_stringwidth(linedit_string *string) {
         n++;
     }
     return n;
+}
+
+/** Finds the line and character number for a given position in the string.
+ * @param[in] string - the string
+ * @param[in] posn - */
+void linedit_stringcoordinates(linedit_string *string, int posn, int *xout, int *yout) {
+    int x=0, y=0, n=0;
+    for (int i=0; i<string->length; n++) {
+        if (n==posn) break;
+        char *c = string->string+i;
+        if (*c == '\n') {
+            x=0; y++;
+        } else x++;
+        i+=linedit_utf8numberofbytes(c);
+    }
+    if (xout) *xout = x;
+    if (yout) *yout = y;
 }
 
 /** Returns a C string from a string */
@@ -364,6 +375,16 @@ void linedit_advancesuggestions(lineditor *edit, unsigned int n) {
 }
 
 /* **********************************************************************
+ * Multiline mode
+ * ********************************************************************** */
+
+/** Test whether we should enter multiline editing mode */
+bool linedit_shouldmultiline(lineditor *edit) {
+    if (edit->multiline && edit->current.string) return (edit->multiline) (edit->current.string);
+    return false; 
+}
+
+/* **********************************************************************
  * Terminal driver
  * ********************************************************************** */
 
@@ -494,14 +515,20 @@ void linedit_getterminalwidth(lineditor *edit) {
     }
 }
 
-/** @brief Shows visible characters l...r from a string */
-void linedit_writewindow(char *string, int l, int r) {
+/** @brief Shows visible characters in a column window l...r from a string */
+void linedit_writewindow(lineditor *edit, char *string, int l, int r) {
     int i=0;
     int width=0;
+    
     for (char *s=string; *s!='\0'; s+=width) {
         width=linedit_utf8numberofbytes(s);
         if (*s=='\r') { // Reset on a carriage return
-            if (write(STDOUT_FILENO, "\r", 1)==-1) return;
+            if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
+            write(STDOUT_FILENO, edit->prompt.string, edit->prompt.length);
+            i=0;
+        } else if (*s=='\n') { // Reset on a new line
+            if (write(STDOUT_FILENO, "\x1b[K\n\r", strlen("\x1b[K\n\r"))==-1) return;
+            write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length);
             i=0;
         } else if (iscntrl(*s)) {
             if (*s=='\033') { // A terminal control character
@@ -635,13 +662,6 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
     return true;
 }
 
-/** @brief Writes a control sequence to move to a given position */
-void linedit_move(linedit_string *out, int posn) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\r\033[%uC", posn);
-    linedit_stringaddcstring(out, code);
-}
-
 /** @brief Writes a control sequence to reset default text */
 void linedit_setdefaulttext(linedit_string *out) {
     char code[LINEDIT_CODESTRINGSIZE];
@@ -667,6 +687,24 @@ void linedit_setemphasis(linedit_string *out, linedit_emphasis emph) {
     }
     
     linedit_stringaddcstring(out, code);
+}
+
+/** @brief Writes a control sequence to move to a given position */
+void linedit_move(linedit_string *out, int posn) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (posn>0) {
+        sprintf(code, "\r\033[%uC", posn);
+        linedit_stringaddcstring(out, code);
+    }
+}
+
+/** @brief Writes a control sequence to move up by n lines */
+void linedit_moveup(linedit_string *out, int n) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (n>0) {
+        sprintf(code, "\033[255B\033[%uA", n);
+        linedit_stringaddcstring(out, code);
+    }
 }
 
 /** @brief Writes a control sequence to erase the rest of the line */
@@ -758,6 +796,7 @@ void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_stri
     linedit_token tok;
     unsigned int iter=0;
     void *ref=NULL;
+    int line=0;
     
     for (char *c=in->string; c!=NULL && *c!='\0';) {
         bool success = (tokenizer) (c, &ref, &tok);
@@ -811,9 +850,12 @@ void linedit_refreshline(lineditor *edit) {
     linedit_eraseline(&output);
     linedit_setdefaulttext(&output);
     
-    /* Display the prompt */
+    int xpos, ypos, nlines;
+    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
+    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
+    
+    linedit_moveup(&output, nlines);
     linedit_stringappend(&output, "\r", 1);
-    linedit_stringaddcstring(&output, edit->prompt.string);
     
     /* Display the current line, syntax colored if available */
     if (edit->color) {
@@ -831,28 +873,29 @@ void linedit_refreshline(lineditor *edit) {
     }
     
     linedit_setdefaulttext(&output);
-    linedit_stringappend(&output, "\r", 1);
+    //linedit_stringappend(&output, "\r", 1);
     
     /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringwidth(&edit->prompt);
     int stringwidth=linedit_stringwidth(&edit->current);
     
     int start=0, end=promptwidth+stringwidth+sugglength;
-    if (end>=edit->ncols) {
-        /* Are we near the start? */
+    /*if (end>=edit->ncols) {
+        // Are we near the start?
         if (promptwidth+edit->posn<edit->ncols) {
             start = 0;
         } else {
             start = promptwidth+edit->posn-edit->ncols+1;
         }
         end=start+edit->ncols-1;
-    }
+    }*/
     
     /* Move cursor to the requested position */
-    linedit_move(&output, edit->posn + promptwidth - start);
+    linedit_moveup(&output, nlines-ypos);
+    linedit_move(&output, promptwidth+xpos-start-1);
     
     /* Write the output string to the display */
-    linedit_writewindow(output.string, start, end);
+    linedit_writewindow(edit, output.string, start, end);
 
     linedit_stringclear(&output);
 }
@@ -963,7 +1006,11 @@ bool linedit_processkeypress(lineditor *edit) {
                 linedit_advanceposition(edit, +1);
                 break;
             case RETURN:
-                return false;
+                if (linedit_shouldmultiline(edit)) {
+                    linedit_stringaddcstring(&edit->current, "\n");
+                    linedit_advanceposition(edit, +1);
+                } else return false;
+                break; 
             case TAB:
                 linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                 /* If suggestions are available (i.e. we're at the end of the line)... */
@@ -989,8 +1036,9 @@ bool linedit_processkeypress(lineditor *edit) {
                         if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
                             int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
                             int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
-                            size_t lindx = linedit_utf8index(&edit->current, lposn, 0);
-                            size_t rindx = linedit_utf8index(&edit->current, rposn, 0);
+                            size_t lindx, rindx;
+                            if (!linedit_utf8index(&edit->current, lposn, 0, &lindx)) break;
+                            if (!linedit_utf8index(&edit->current, rposn, 0, &rindx)) break;
                             linedit_stringclear(&edit->clipboard);
                             linedit_stringappend(&edit->clipboard, edit->current.string+lindx, (size_t) rindx-lindx);
                         }
@@ -1103,7 +1151,7 @@ char *linedit(lineditor *edit) {
     
     switch (linedit_checksupport()) {
         case LINEDIT_NOTTTY: linedit_noterminal(edit); break;
-        case LINEDIT_UNSUPPORTED: linedit_unsupported(edit); break;
+        case LINEDIT_UNSUPPORTED: //linedit_unsupported(edit); break;
         case LINEDIT_SUPPORTED: linedit_supported(edit); break;
     }
     
@@ -1142,6 +1190,19 @@ void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_c
 void linedit_autocomplete(lineditor *edit, linedit_completer completer) {
     if (!edit) return;
     edit->completer=completer;
+}
+
+/** @brief Enables multiline editing
+ *  @param edit         Line editor to configure 
+ *  @param multiline    Multiline callback function */
+void linedit_multiline(lineditor *edit, linedit_multilinecallback multiline, char *cprompt) {
+    edit->multiline=multiline;
+    linedit_stringclear(&edit->cprompt);
+    if (cprompt) {
+        linedit_stringaddcstring(&edit->cprompt, cprompt);
+    } else {
+        linedit_stringaddcstring(&edit->cprompt, edit->prompt.string);
+    }
 }
 
 /** @brief Adds a completion suggestion
@@ -1220,9 +1281,11 @@ void linedit_init(lineditor *edit) {
     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
     linedit_stringinit(&edit->current);
     linedit_stringinit(&edit->prompt);
+    linedit_stringinit(&edit->cprompt);
     linedit_stringinit(&edit->clipboard);
     linedit_setprompt(edit, LINEDIT_DEFAULTPROMPT);
     edit->completer=NULL;
+    edit->multiline=NULL; 
 }
 
 /** Finalize a line editor */
@@ -1237,5 +1300,6 @@ void linedit_clear(lineditor *edit) {
     linedit_stringlistclear(&edit->suggestions);
     linedit_stringclear(&edit->current);
     linedit_stringclear(&edit->prompt);
+    linedit_stringclear(&edit->cprompt);
     linedit_stringclear(&edit->clipboard);
 }

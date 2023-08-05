@@ -36,4 +36,4 @@ find_library(MORPHO_LIBRARY
 target_link_libraries(morpho6 ${MORPHO_LIBRARY})
 
 # Install the resulting binary
-install(TARGETS morpho6)
+#install(TARGETS morpho6)
