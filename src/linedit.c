@@ -43,6 +43,15 @@ int linedit_utf8toint(char *c) {
     return ret;
 }
 
+/** @brief Utf8 character loop advancer.
+    @details Determines the number of bytes for the code point at c, and advances the counter i by that number.
+     Returns true if the number of bytes is >0 */
+bool linedit_utf8next(char *c, int *i) {
+    int adv = linedit_utf8numberofbytes(c);
+    if (adv) *i+=adv;
+    return adv;
+}
+
 /* **********************************************************************
  * Terminal
  * ********************************************************************** */
@@ -325,7 +334,7 @@ bool linedit_stringutf8index(linedit_string *string, size_t i, size_t offset, si
     int advance=0;
     size_t nchars=0;
     
-    for (ssize_t j=0; j+offset<=string->length; j+=advance, nchars++) {
+    for (size_t j=0; j+offset<=string->length; j+=advance, nchars++) {
         if (nchars==i) { *out = j; return true; }
         advance=linedit_utf8numberofbytes(string->string+offset+j);
         if (advance==0) break; // If advance is 0, the string is corrupted; return failure
@@ -430,11 +439,8 @@ void linedit_stringaddcstring(linedit_string *string, char *s) {
 /** Finds the width of a string in characters */
 int linedit_stringwidth(linedit_string *string) {
     int n=0;
-    for (int i=0; i<string->length; ) {
-        int adv = linedit_utf8numberofbytes(string->string+i);
-        if (adv==0) break;
-        i+=adv;
-        n++;
+    for (int i=0; i<string->length; n++) {
+        if (!linedit_utf8next(string->string+i, &i)) break;
     }
     return n;
 }
@@ -447,20 +453,20 @@ int linedit_stringwidth(linedit_string *string) {
 void linedit_stringcoordinates(linedit_string *string, int posn, int *xout, int *yout) {
     int x=0, y=0, n=0;
     for (int i=0; i<string->length; n++) {
-        char *c=string->string+i;
         if (n==posn) break;
+        char *c=string->string+i;
+
         if (*c=='\n') {
             x=0; y++;
         } else x++;
-        int adv=linedit_utf8numberofbytes(c);
-        if (adv==0) break;
-        i+=adv;
+
+        if (!linedit_utf8next(c, &i)) break;
     }
     if (xout) *xout = x;
     if (yout) *yout = y;
 }
 
-/** Finds the position in the string for the start of a given line
+/** Finds the position in the string for specified coordinates
  * @param[in] string - the string
  * @param[in] x - character position or -1 to find the end of the line
  * @param[in] y - line number
@@ -468,15 +474,15 @@ void linedit_stringcoordinates(linedit_string *string, int posn, int *xout, int 
 void linedit_stringfindposition(linedit_string *string, int x, int y, int *posn) {
     int xx=0, yy=0, n=0;
     for (int i=0; i<string->length; n++) {
-        char *c = string->string+i;
         if (xx==x && yy==y) break;
+        
+        char *c = string->string+i;
         if (*c=='\n') {
             xx=0; yy++;
             if (yy>y) break;
-        }
-        int adv=linedit_utf8numberofbytes(c);
-        if (adv==0) break;
-        i+=adv;
+        } else xx++;
+        
+        if (!linedit_utf8next(c, &i)) break;
     }
     if (posn) *posn = n;
 }
@@ -581,6 +587,13 @@ linedit_string *linedit_stringlistselect(linedit_stringlist *list, unsigned int 
     return s;
 }
 
+/** Count the number of entries in a string list */
+int linedit_stringlistcount(linedit_stringlist *list) {
+    int n=0;
+    for (linedit_string *s=list->first; s!=NULL; s=s->next) n++;
+    return n;
+}
+
 /* **********************************************************************
  * History list
  * ********************************************************************** */
@@ -612,6 +625,11 @@ unsigned int linedit_historyselect(lineditor *edit, unsigned int n) {
 void linedit_historyadvance(lineditor *edit, unsigned int n) {
     edit->history.posn+=n;
     edit->history.posn=linedit_historyselect(edit, edit->history.posn);
+}
+
+/** Returns the number of entries in the history list */
+int linedit_historycount(lineditor *edit) {
+    return linedit_stringlistcount(&edit->history);
 }
 
 /* **********************************************************************
@@ -1072,17 +1090,30 @@ void linedit_changeheight(int delta) {
  * ---------------------------------------- */
 
 /** @brief Process a left keypress */
-void linedit_processleftkeypress(lineditor *edit) {
-    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+void linedit_processleftkeypress(lineditor *edit, lineditormode mode) {
+    linedit_setmode(edit, mode);
     linedit_advanceposition(edit, -1);
     if (linedit_atnewline(edit)) linedit_moveup(1);
 }
 
 /** @brief Process a left keypress */
-void linedit_processrightkeypress(lineditor *edit) {
-    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+void linedit_processrightkeypress(lineditor *edit, lineditormode mode) {
+    linedit_setmode(edit, mode);
     if (linedit_atnewline(edit)) linedit_movedown(1);
     linedit_advanceposition(edit, +1);
+}
+
+/** @brief Change the line */
+void linedit_processchangeline(lineditor *edit, int delta) {
+    int x, yinit, y;
+    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+    linedit_stringcoordinates(&edit->current, edit->posn, &x, &yinit);
+    y=yinit+delta;
+    if (y<0) y=0;
+    linedit_stringfindposition(&edit->current, x, y, &edit->posn);
+    linedit_stringcoordinates(&edit->current, edit->posn, &x, &y); // Find where we ended up
+    if (y>yinit) linedit_movedown(y-yinit); //
+    if (y<yinit) linedit_moveup(yinit-y);
 }
 
 /** @brief Obtain and process a single keypress */
@@ -1116,23 +1147,21 @@ bool linedit_processkeypress(lineditor *edit) {
                 linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                 break;
             case LEFT:
-                linedit_processleftkeypress(edit);
+                linedit_processleftkeypress(edit, LINEDIT_DEFAULTMODE);
                 break;
             case RIGHT:
-                linedit_processrightkeypress(edit);
+                linedit_processrightkeypress(edit, LINEDIT_DEFAULTMODE);
                 break;
             case SHIFT_LEFT:
-                linedit_setmode(edit, LINEDIT_SELECTIONMODE);
-                linedit_advanceposition(edit, -1);
-                if (linedit_atnewline(edit)) linedit_moveup(1);
+                linedit_processleftkeypress(edit, LINEDIT_SELECTIONMODE);
                 break;
             case SHIFT_RIGHT:
-                linedit_setmode(edit, LINEDIT_SELECTIONMODE);
-                if (linedit_atnewline(edit)) linedit_movedown(1);
-                linedit_advanceposition(edit, +1);
+                linedit_processrightkeypress(edit, LINEDIT_SELECTIONMODE);
                 break;
             case UP:
             {
+                if (linedit_historycount(edit)==0) break;
+                
                 if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
                     linedit_setmode(edit, LINEDIT_HISTORYMODE);
                     linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
@@ -1143,6 +1172,8 @@ bool linedit_processkeypress(lineditor *edit) {
             }
                 break;
             case DOWN:
+                if (linedit_historycount(edit)==0) break;
+                
                 if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
                     linedit_historyadvance(edit, -1);
                     linedit_setposition(edit, -1);
@@ -1183,7 +1214,7 @@ bool linedit_processkeypress(lineditor *edit) {
                     }
                         break;
                     case 'B': /* Move backward */
-                        linedit_processleftkeypress(edit);
+                        linedit_processleftkeypress(edit, LINEDIT_DEFAULTMODE);
                         break;
                     case 'C': /* Copy */
                         if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
@@ -1208,7 +1239,7 @@ bool linedit_processkeypress(lineditor *edit) {
                     }
                         break;
                     case 'F': /* Move forward */
-                        linedit_processrightkeypress(edit);
+                        linedit_processrightkeypress(edit, LINEDIT_DEFAULTMODE);
                         break;
                     case 'G': { /* Abort current editing session */
                         linedit_stringclear(&edit->current);
@@ -1219,6 +1250,12 @@ bool linedit_processkeypress(lineditor *edit) {
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                         linedit_stringclear(&edit->current);
                         edit->posn=0;
+                        break;
+                    case 'N': /* Next line */
+                        linedit_processchangeline(edit, 1);
+                        break;
+                    case 'P': /* Previous line */
+                        linedit_processchangeline(edit, -1);
                         break;
                     case 'V': /* Paste */
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
