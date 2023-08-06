@@ -1075,13 +1075,26 @@ void linedit_redraw(lineditor *edit) {
     linedit_stringclear(&output);
 }
 
-/** @brief Changes the height of the current line editing session */
-void linedit_changeheight(int delta) {
+/** @brief Changes the height of the current line editing session, erasing garbage if necessary */
+void linedit_changeheight(lineditor *edit, int oldheight, int newheight) {
+    int delta = newheight-oldheight;
     if (delta>0) {
         for (int i=0; i<delta; i++) linedit_linefeed();
-    } else for (int i=0; i>delta; i--) {
-        linedit_eraseline();
-        linedit_moveup(1);
+    } else {
+        int cline;
+        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &cline);
+        
+        for (int i=cline; i<newheight; i++) { // Erase to end
+            linedit_linefeed();
+            linedit_eraseline();
+        }
+        
+        linedit_moveup(newheight-cline); // Move back up
+        
+        for (int i=0; i>delta; i--) { // Now move up erasing as we go
+            linedit_eraseline();
+            linedit_moveup(1);
+        }
     }
 }
 
@@ -1322,17 +1335,17 @@ void linedit_supported(lineditor *edit) {
     while (linedit_processkeypress(edit)) {
         int newnlines=linedit_stringcountlines(&edit->current);
         if (newnlines!=nlines) {
-            linedit_changeheight(newnlines-nlines);
+            linedit_changeheight(edit, nlines, newnlines);
             nlines=newnlines;
         }
         linedit_redraw(edit);
     }
 
-    /* Ensure we're always at the end of the input when redrawing */
+    /* Ensure we're always on the last line of the input when redrawing before exit */
     int cline;
     nlines=linedit_stringcountlines(&edit->current);
     linedit_stringcoordinates(&edit->current, edit->posn, NULL, &cline);
-    linedit_changeheight(nlines-cline);
+    for (int i=cline; i<nlines; i++) linedit_linefeed();
     linedit_setposition(edit, -1);
     
     /* Remove any dangling suggestions */
@@ -1524,3 +1537,4 @@ int linedit_getwidth(lineditor *edit) {
     linedit_getterminalwidth(edit);
     return edit->ncols;
 }
+
