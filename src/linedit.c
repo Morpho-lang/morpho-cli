@@ -1081,16 +1081,17 @@ void linedit_redraw(lineditor *edit) {
 
 /** @brief Changes the height of the current line editing session, erasing garbage if necessary */
 void linedit_changeheight(lineditor *edit, int oldheight, int newheight, int oldvpos, int newvpos) {
-    int delta = newheight-oldheight;
-    if (delta>0) {
-        for (int i=0; i<delta; i++) linedit_linefeed();
+    if (newheight>=oldheight) {
+        for (int i=0; i<newheight-oldheight; i++) linedit_linefeed();
     } else {
         for (int i=0; i<oldheight-oldvpos; i++) { // Erase to end
             linedit_eraseline();
             linedit_linefeed();
         }
-        linedit_eraseline();
-        linedit_moveup(oldheight-newvpos);
+        for (int i=0; i<oldheight-newvpos; i++) { 
+            linedit_eraseline();
+            linedit_moveup(1);
+        }
     }
 }
 
