@@ -16,6 +16,7 @@
 /** @brief Returns the number of bytes in the next character of a given utf8 string
     @returns number of bytes */
 int linedit_utf8numberofbytes(char *string) {
+    if (!string) return 0;
     uint8_t byte = * ((uint8_t *) string);
     
     if ((byte & 0xc0) == 0x80) return 0; // In the middle of a utf8 string
@@ -40,6 +41,259 @@ int linedit_utf8toint(char *c) {
     }
     
     return ret;
+}
+
+/* **********************************************************************
+ * Terminal
+ * ********************************************************************** */
+
+/* ----------------------------------------
+ * Retrieve terminal type
+ * ---------------------------------------- */
+
+void linedit_enablerawmode(void);
+void linedit_disablerawmode(void);
+
+typedef enum {
+    LINEDIT_NOTTTY,
+    LINEDIT_UNSUPPORTED,
+    LINEDIT_SUPPORTED
+} linedit_terminaltype;
+
+/** @brief   Compares two c strings independently of case
+ *  @param[in] str1 - } strings to compare
+ *  @param[in] str2 - }
+ *  @returns 0 if the strings are identical, otherwise a positive or negative number indicating their lexographic order */
+int linedit_cstrcasecmp(char *str1, char *str2) {
+    if (str1 == str2) return 0;
+    int result=0;
+    
+    for (char *p1=str1, *p2=str2; result==0; p1++, p2++) {
+        result=tolower(*p1)-tolower(*p2);
+        if (*p1=='\0') break;
+    }
+    
+    return result;
+}
+
+/** Checks whether the current terminal is supported */
+linedit_terminaltype linedit_checksupport(void) {
+    /* Make sure we're a tty */
+    if (!isatty(STDIN_FILENO)) {
+        return LINEDIT_NOTTTY;
+    }
+     
+    char *unsupported[]={"dumb","cons25","emacs",NULL};
+    char *term = getenv("TERM");
+    
+    if (term == NULL) return LINEDIT_UNSUPPORTED;
+    for (unsigned int i=0; unsupported[i]!=NULL; i++) {
+        if (!linedit_cstrcasecmp(term, unsupported[i])) return LINEDIT_UNSUPPORTED;
+    }
+    
+    return LINEDIT_SUPPORTED;
+}
+
+/* ----------------------------------------
+ * Switch to/from raw mode
+ * ---------------------------------------- */
+
+/** Holds the original terminal state */
+struct termios terminit;
+
+bool termexitregistered=false;
+
+/** @brief Enables 'raw' mode in the terminal
+ *  @details In raw mode key presses are passed directly to us rather than
+ *           being buffered. */
+void linedit_enablerawmode(void) {
+    struct termios termraw; /* Use to set the raw state */
+    if (!termexitregistered) {
+        atexit(linedit_disablerawmode);
+        termexitregistered=true;
+    }
+    
+    tcgetattr(STDIN_FILENO, &terminit); /** Get the original state*/
+    
+    termraw=terminit;
+    /* Input: Turn off: IXON   - software flow control (ctrl-s and ctrl-q)
+                        ICRNL  - translate CR into NL (ctrl-m)
+                        BRKINT - parity checking
+                        ISTRIP - strip bit 8 of each input byte */
+    termraw.c_iflag &= ~(IXON | ICRNL | BRKINT | INPCK | BRKINT | ISTRIP);
+    /* Output: Turn off: OPOST - output processing */
+    termraw.c_oflag &= ~(OPOST);
+    /* Character: CS8 Set 8 bits per byte */
+    termraw.c_cflag |= (CS8);
+    /* Turn off: ECHO   - causes keypresses to be printed immediately
+                 ICANON - canonical mode, reads line by line
+                 IEXTEN - literal (ctrl-v)
+                 ISIG   - turn off signals (ctrl-c and ctrl-z) */
+    termraw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    /* Set return condition for control characters */
+    termraw.c_cc[VMIN] = 1; termraw.c_cc[VTIME] = 0; /* 1 byte, no timer */
+    
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &termraw);
+}
+
+/** @brief Restore terminal state to normal */
+void linedit_disablerawmode(void) {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminit);
+    printf("\r"); /** Print a carriage return to ensure we're back on the left hand side */
+}
+
+/* ----------------------------------------
+ * Get cursor position and width
+ * ---------------------------------------- */
+
+#define LINEDIT_CURSORPOSN_BUFFERSIZE 32
+/** @brief Gets the cursor position */
+bool linedit_getcursorposition(int *x, int *y) {
+    char answer[LINEDIT_CURSORPOSN_BUFFERSIZE];
+    int i=0, row=0, col=0;
+
+    /* Report cursor location */
+    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return false;
+
+    /* Read the response: ESC [ rows ; cols R */
+    while (i < sizeof(answer)-1) {
+        if (read(STDIN_FILENO,answer+i,1) != 1) break;
+        if (answer[i] == 'R') break; // Response is 'R' terminated
+        i++;
+    }
+    answer[i] = '\0'; // Terminal response is not null-terminated by default
+
+    /* Parse response */
+    if (answer[0] != 27 || answer[1] != '[') return false;
+    if (sscanf(answer+2,"%d;%d",&row,&col) != 2) return false;
+    
+    if (y) *y = row; // Return result
+    if (x) *x = col;
+    return true;
+}
+
+/** @brief Gets the terminal width */
+void linedit_getterminalwidth(lineditor *edit) {
+    struct winsize ws;
+    
+    edit->ncols=80;
+    
+    /* Try ioctl first */
+    if (!(ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)) {
+        edit->ncols=ws.ws_col;
+    } else {
+        // Should get cursor position etc here.
+    }
+}
+
+/* ----------------------------------------
+ * Output
+ * ---------------------------------------- */
+
+/** @brief Writes a string to the terminal */
+bool linedit_write(char *string) {
+    size_t length=strlen(string);
+    if (write(STDOUT_FILENO, string, length)==-1) {
+        fprintf(stderr, "Error writing to terminal.\n");
+        return false;
+    }
+    return true;
+}
+
+/** @brief Writes a character to the terminal */
+bool linedit_writechar(char c) {
+    if (write(STDOUT_FILENO, &c, 1)==-1) {
+        fprintf(stderr, "Error writing to terminal.\n");
+        return false;
+    }
+    return true;
+}
+
+/** @brief Erases the current line */
+bool linedit_eraseline(void) {
+    return linedit_write("\033[2K");
+}
+
+/** @brief Erases the rest of the current line */
+bool linedit_erasetoendofline(void) {
+    return linedit_write("\033[0K");
+}
+
+/** @brief Moves the cursor to the start of the line */
+bool linedit_home(void) {
+    return linedit_write("\r");
+}
+
+/** @brief Sets default text */
+bool linedit_defaulttext(void) {
+    return linedit_write("\033[0m");
+}
+
+/** @brief Line feed */
+bool linedit_linefeed(void) {
+    return linedit_write("\n");
+}
+
+/** @brief Moves the cursor to the specified position */
+bool linedit_movetocolumn(int posn) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (posn>0) {
+        sprintf(code, "\r\033[%uC", posn);
+        return linedit_write(code);
+    }
+    return true;
+}
+
+/** @brief Moves the cursor up by n lines */
+bool linedit_moveup(int n) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (n>0) {
+        sprintf(code, "\033[%uA", n);
+        return linedit_write(code);
+    }
+    return true;
+}
+
+/** @brief Moves the cursor down by n lines */
+ bool linedit_movedown(int n) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    if (n>0) {
+        sprintf(code, "\033[%uB", n);
+        return linedit_write(code);
+    }
+     return true;
+}
+
+/** @brief Renders a string, showing only characters in columns l...r */
+void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
+    int i=0;
+    int width=0;
+    
+    for (char *s=string; *s!='\0'; s+=width) {
+        width=linedit_utf8numberofbytes(s);
+        if (width==0) break;
+        if (*s=='\r') { // Reset on a carriage return
+            if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
+            i=0;
+        } else if (*s=='\n') { // Clear to end of line and return
+            if (!linedit_write("\x1b[K\n\r")) return;
+            write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length);
+            i=0;
+        } else if (*s=='\t') {
+            if (!linedit_write(" ")) return;
+            i+=1;
+        } else if (iscntrl(*s)) {
+            if (*s=='\033') { // A terminal control character
+                char *ctl=s; // First identify its length
+                while (!isalpha(*ctl) && *ctl!='\0') ctl++;
+                if (write(STDOUT_FILENO, s, ctl-s+1)==-1) return; // print it
+                s=ctl;
+            }
+        } else { // Otherwise show printable characters that lie within the window
+            if (i>=l && i<r) write(STDOUT_FILENO, s, width);
+            i++;
+        }
+    }
 }
 
 /* **********************************************************************
@@ -146,6 +400,8 @@ void linedit_stringdelete(linedit_string *string, size_t posn, size_t n) {
     size_t offset;
     size_t nbytes;
     
+    if (string->length<n) return;
+    
     if (!linedit_stringutf8index(string, posn, 0, &offset)) return;
     if (!linedit_stringutf8index(string, n, offset, &nbytes)) return;
     
@@ -175,7 +431,9 @@ void linedit_stringaddcstring(linedit_string *string, char *s) {
 int linedit_stringwidth(linedit_string *string) {
     int n=0;
     for (int i=0; i<string->length; ) {
-        i+=linedit_utf8numberofbytes(string->string+i);
+        int adv = linedit_utf8numberofbytes(string->string+i);
+        if (adv==0) break;
+        i+=adv;
         n++;
     }
     return n;
@@ -194,7 +452,9 @@ void linedit_stringcoordinates(linedit_string *string, int posn, int *xout, int 
         if (*c=='\n') {
             x=0; y++;
         } else x++;
-        i+=linedit_utf8numberofbytes(c);
+        int adv=linedit_utf8numberofbytes(c);
+        if (adv==0) break;
+        i+=adv;
     }
     if (xout) *xout = x;
     if (yout) *yout = y;
@@ -214,9 +474,17 @@ void linedit_stringfindposition(linedit_string *string, int x, int y, int *posn)
             xx=0; yy++;
             if (yy>y) break;
         }
-        i+=linedit_utf8numberofbytes(c);
+        int adv=linedit_utf8numberofbytes(c);
+        if (adv==0) break;
+        i+=adv;
     }
     if (posn) *posn = n;
+}
+/** Locates a particular posn in a string, returning a pointer to the character */
+char *linedit_stringlocate(linedit_string *string, int posn) {
+    size_t out;
+    if (!linedit_stringutf8index(string, posn, 0, &out)) return NULL;
+    return string->string+out;
 }
 
 /** Counts the number of lines a string occupies */
@@ -224,13 +492,6 @@ int linedit_stringcountlines(linedit_string *string) {
     int lines;
     linedit_stringcoordinates(string, -1, NULL, &lines);
     return lines;
-}
-
-/** Locates a particular posn in a string, returning a pointer to the character */
-char *linedit_stringlocate(linedit_string *string, int posn) {
-    size_t out;
-    if (!linedit_stringutf8index(string, posn, 0, &out)) return NULL;
-    return string->string+out;
 }
 
 /** Returns a C string from a string */
@@ -404,251 +665,154 @@ bool linedit_shouldmultiline(lineditor *edit) {
 }
 
 /* **********************************************************************
- * Low level interaction with the terminal
+ * Syntax highlighting
  * ********************************************************************** */
 
-/* ----------------------------------------
- * Retrieve terminal info
- * ---------------------------------------- */
-
-void linedit_enablerawmode(void);
-void linedit_disablerawmode(void);
-
-typedef enum {
-    LINEDIT_NOTTTY,
-    LINEDIT_UNSUPPORTED,
-    LINEDIT_SUPPORTED
-} linedit_terminaltype;
-
-/** @brief   Compares two c strings independently of case
- *  @param[in] str1 - } strings to compare
- *  @param[in] str2 - }
- *  @returns 0 if the strings are identical, otherwise a positive or negative number indicating their lexographic order */
-int linedit_cstrcasecmp(char *str1, char *str2) {
-    if (str1 == str2) return 0;
-    int result=0;
-    
-    for (char *p1=str1, *p2=str2; result==0; p1++, p2++) {
-        result=tolower(*p1)-tolower(*p2);
-        if (*p1=='\0') break;
-    }
-    
-    return result;
+/** @brief Writes a control sequence to reset default text */
+void linedit_stringdefaulttext(linedit_string *out) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    sprintf(code, "\033[0m");
+    linedit_stringaddcstring(out, code);
 }
 
-/** Checks whether the terminal is supported */
-linedit_terminaltype linedit_checksupport(void) {
-    /* Make sure we're a tty */
-    if (!isatty(STDIN_FILENO)) {
-        return LINEDIT_NOTTTY;
-    }
-     
-    char *unsupported[]={"dumb","cons25","emacs",NULL};
-    char *term = getenv("TERM");
-    
-    if (term == NULL) return LINEDIT_UNSUPPORTED;
-    for (unsigned int i=0; unsupported[i]!=NULL; i++) {
-        if (!linedit_cstrcasecmp(term, unsupported[i])) return LINEDIT_UNSUPPORTED;
-    }
-    
-    return LINEDIT_SUPPORTED;
+/** @brief Writes a control sequence to set a given color */
+void linedit_stringsetcolor(linedit_string *out, linedit_color col) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    sprintf(code, "\033[%im", (col==LINEDIT_DEFAULTCOLOR ? 0: 30+col));
+    linedit_stringaddcstring(out, code);
 }
 
-/** Holds the original terminal state */
-struct termios terminit;
-
-bool termexitregistered=false;
-
-/** @brief Enables 'raw' mode in the terminal
- *  @details In raw mode key presses are passed directly to us rather than
- *           being buffered. */
-void linedit_enablerawmode(void) {
-    struct termios termraw; /* Use to set the raw state */
-    if (!termexitregistered) {
-        atexit(linedit_disablerawmode);
-        termexitregistered=true;
+/** @brief Writes a control sequence to set a given emphasis */
+void linedit_stringsetemphasis(linedit_string *out, linedit_emphasis emph) {
+    char code[LINEDIT_CODESTRINGSIZE];
+    switch (emph) {
+        case LINEDIT_BOLD: sprintf(code, "\033[1m"); break;
+        case LINEDIT_UNDERLINE: sprintf(code, "\033[4m"); break;
+        case LINEDIT_REVERSE: sprintf(code, "\033[7m"); break;
+        case LINEDIT_NONE: break;
     }
     
-    tcgetattr(STDIN_FILENO, &terminit); /** Get the original state*/
-    
-    termraw=terminit;
-    /* Input: Turn off: IXON   - software flow control (ctrl-s and ctrl-q)
-                        ICRNL  - translate CR into NL (ctrl-m)
-                        BRKINT - parity checking
-                        ISTRIP - strip bit 8 of each input byte */
-    termraw.c_iflag &= ~(IXON | ICRNL | BRKINT | INPCK | BRKINT | ISTRIP);
-    /* Output: Turn off: OPOST - output processing */
-    termraw.c_oflag &= ~(OPOST);
-    /* Character: CS8 Set 8 bits per byte */
-    termraw.c_cflag |= (CS8);
-    /* Turn off: ECHO   - causes keypresses to be printed immediately
-                 ICANON - canonical mode, reads line by line
-                 IEXTEN - literal (ctrl-v)
-                 ISIG   - turn off signals (ctrl-c and ctrl-z) */
-    termraw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    /* Set return condition for control characters */
-    termraw.c_cc[VMIN] = 1; termraw.c_cc[VTIME] = 0; /* 1 byte, no timer */
-    
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &termraw);
+    linedit_stringaddcstring(out, code);
 }
 
-/** @brief Restore terminal state to normal */
-void linedit_disablerawmode(void) {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminit);
-    printf("\r"); /** Print a carriage return to ensure we're back on the left hand side */
-}
-
-/* ----------------------------------------
- * Query terminal
- * ---------------------------------------- */
-
-#define LINEDIT_CURSORPOSN_BUFFERSIZE 32
-/** @brief Gets the cursor position */
-bool linedit_getcursorposition(int *x, int *y) {
-    char answer[LINEDIT_CURSORPOSN_BUFFERSIZE];
-    int i=0, row=0, col=0;
-
-    /* Report cursor location */
-    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return false;
-
-    /* Read the response: ESC [ rows ; cols R */
-    while (i < sizeof(answer)-1) {
-        if (read(STDIN_FILENO,answer+i,1) != 1) break;
-        if (answer[i] == 'R') break; // Response is 'R' terminated
-        i++;
+/** Adds a string with selection highlighting
+ * @param[in] edit - active editor
+ * @param[in] in - input string
+ * @param[in] offset - offset of string in characters
+ * @param[in] length - length of string in characters
+ * @param[in] col - color
+ * @param[out] out - display plus coloring information written to this string */
+void linedit_addcstringwithselection(lineditor *edit, char *in, size_t offset, size_t length, linedit_color *col, linedit_string *out) {
+    int lposn=-1, rposn=-1;
+    
+    /* If a selection is active, discover its bounds */
+    if (edit->mode==LINEDIT_SELECTIONMODE && !(edit->sposn<0)) {
+        lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn) - (int) offset;
+        rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn) - (int) offset;
     }
-    answer[i] = '\0'; // Terminal response is not null-terminated by default
-
-    /* Parse response */
-    if (answer[0] != 27 || answer[1] != '[') return false;
-    if (sscanf(answer+2,"%d;%d",&row,&col) != 2) return false;
     
-    if (y) *y = row; // Return result
-    if (x) *x = col;
-    return true;
-}
-
-/** @brief Gets the terminal width */
-void linedit_getterminalwidth(lineditor *edit) {
-    struct winsize ws;
+    /* Set the color if provided */
+    if (col) linedit_stringsetcolor(out, *col);
     
-    edit->ncols=80;
-    
-    /* Try ioctl first */
-    if (!(ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)) {
-        edit->ncols=ws.ws_col;
+    /* Is the text we're showing outside the selected region entirely? */
+    if (rposn<0 || lposn>(int) length) {
+        linedit_stringappend(out, in, length);
     } else {
-        // Should get cursor position etc here.
-    }
-}
-
-/* ----------------------------------------
- * Output
- * ---------------------------------------- */
-
-/** @brief Writes a string to the terminal */
-bool linedit_write(char *string) {
-    size_t length=strlen(string);
-    if (write(STDOUT_FILENO, string, length)==-1) {
-        fprintf(stderr, "Error writing to terminal.\n");
-        return false;
-    }
-    return true;
-}
-
-/** @brief Writes a character to the terminal */
-void linedit_writechar(char c) {
-    if (write(STDOUT_FILENO, &c, 1)==-1) {
-        fprintf(stderr, "Error writing to terminal.\n");
-    }
-}
-
-/** @brief Erases the current line */
-void linedit_eraseline(void) {
-    linedit_write("\033[2K");
-}
-
-/** @brief Erases the rest of the current line */
-void linedit_erasetoendofline(void) {
-    linedit_write("\033[0K");
-}
-
-/** @brief Moves the cursor to the home position */
-void linedit_home(void) {
-    linedit_write("\r");
-}
-
-/** @brief Sets default text */
-void linedit_defaulttext(void) {
-    linedit_write("\033[0m");
-}
-
-/** @brief Line feed */
-void linedit_linefeed(void) {
-    linedit_write("\n");
-}
-
-/** @brief Moves the cursor to the specified position */
-void linedit_movetocolumn(int posn) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    if (posn>0) {
-        sprintf(code, "\r\033[%uC", posn);
-        linedit_write(code);
-    }
-}
-
-/** @brief Moves the cursor up by n lines */
-void linedit_moveup(int n) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    if (n>0) {
-        sprintf(code, "\033[%uA", n);
-        linedit_write(code);
-    }
-}
-
-/** @brief Moves the cursor down by n lines */
-void linedit_movedown(int n) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    if (n>0) {
-        sprintf(code, "\033[%uB", n);
-        linedit_write(code);
-    }
-}
-
-/** @brief Renders a string, showing only characters in columns l...r */
-void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
-    int i=0;
-    int width=0;
-    
-    for (char *s=string; *s!='\0'; s+=width) {
-        width=linedit_utf8numberofbytes(s);
-        if (*s=='\r') { // Reset on a carriage return
-            if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
-            i=0;
-        } else if (*s=='\n') { // Clear to end of line and return
-            if (!linedit_write("\x1b[K\n\r")) return;
-            write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length);
-            i=0;
-        } else if (*s=='\t') {
-            if (!linedit_write(" ")) return;
-            i+=1;
-        } else if (iscntrl(*s)) {
-            if (*s=='\033') { // A terminal control character
-                char *ctl=s; // First identify its length
-                while (!isalpha(*ctl) && *ctl!='\0') ctl++;
-                if (write(STDOUT_FILENO, s, ctl-s+1)==-1) return; // print it
-                s=ctl;
+        /* If not, add the characters one by one and insert highlighting */
+        if (lposn<0) {
+            linedit_stringsetemphasis(out, LINEDIT_REVERSE);
+        }
+        char *c=in;
+        for (int i=0; i<length; i++) {
+            if (i==lposn) {
+                linedit_stringsetemphasis(out, LINEDIT_REVERSE);
             }
-        } else { // Otherwise show printable characters that lie within the window
-            if (i>=l && i<r) write(STDOUT_FILENO, s, width);
-            i++;
+            if (i==rposn) {
+                linedit_stringdefaulttext(out);
+                /* Restore the color if one is provided */
+                if (col) linedit_stringsetcolor(out, *col);
+            }
+            int nbytes=linedit_utf8numberofbytes(c);
+            if (nbytes) linedit_stringappend(out, c, nbytes);
+            else nbytes=1; // Corrupted stream
+            c+=nbytes;
         }
     }
 }
 
-/* ----------------------------------------
- * Handle keypresses
- * ---------------------------------------- */
+/** Compare two colormap structs */
+int linedit_colormapcmp(const void *l, const void *r) {
+    linedit_colormap *a = (linedit_colormap *) l;
+    linedit_colormap *b = (linedit_colormap *) r;
+    
+    return a->type - b->type;
+}
+
+/** Returns a color matching tokentype type */
+linedit_color linedit_colorfromtokentype(lineditor *edit, linedit_tokentype type) {
+    linedit_colormap key = { .type = type, .col = LINEDIT_DEFAULTCOLOR };
+    
+    if (edit->color) {
+        linedit_colormap *val = bsearch(&key, edit->color->col, edit->color->ncols, sizeof(linedit_colormap), linedit_colormapcmp);
+        
+        if (val) return val->col;
+    }
+    
+    return LINEDIT_DEFAULTCOLOR;
+}
+
+/** Print a string with syntax coloring */
+void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_string *out) {
+    linedit_tokenizefn tokenizer=edit->color->tokenizer;
+    linedit_color col=LINEDIT_DEFAULTCOLOR;
+    linedit_token tok;
+    unsigned int iter=0;
+    int line=0;
+    
+    for (char *c=in->string; c!=NULL && *c!='\0';) {
+        bool success = (tokenizer) (c, edit->color->tokref, &tok);
+        /* Get the next token */
+        if (success && tok.length>0 && tok.start>=c) {
+            size_t padding=tok.start-c;
+            /* If there's leading unrecognized characters, print them. */
+            if (tok.start>c) {
+                col=LINEDIT_DEFAULTCOLOR;
+                linedit_addcstringwithselection(edit, c, c-in->string, padding, &col, out);
+            }
+            
+            /* Set the color */
+            col = linedit_colorfromtokentype(edit, tok.type);
+            
+            /* Copy the token across */
+            if (tok.length>0) {
+                linedit_addcstringwithselection(edit, tok.start, tok.start-in->string, tok.length, &col, out);
+            }
+            
+            c=tok.start+tok.length;
+        } else {
+            col=LINEDIT_DEFAULTCOLOR;
+            linedit_addcstringwithselection(edit, c, c-in->string, in->length-(c-in->string), &col, out);
+            return;
+        };
+        iter++;
+        if (iter>in->length) {
+            if (!edit->color->lexwarning) {
+                fprintf(stderr, "\n\rLinedit error: Syntax colorer appears to be stuck in an infinite loop; ensure the tokenizer returns false if it doesn't recognize a token.\n");
+                edit->color->lexwarning=true;
+            }
+            return;
+        }
+    }
+}
+
+/** Print a string without syntax coloring */
+void linedit_plainstring(lineditor *edit, linedit_string *in, linedit_string *out) {
+    linedit_addcstringwithselection(edit, in->string, 0, in->length, NULL, out);
+}
+
+/* **********************************************************************
+ * Keypresses
+ * ********************************************************************** */
 
 /** Identifies the type of keypress */
 typedef enum {
@@ -772,216 +936,13 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
     return true;
 }
 
-/* ----------------------------------------
- * Add style and emphasis codes to strings
- * ---------------------------------------- */
-
-/** @brief Writes a control sequence to reset default text */
-void linedit_setdefaulttext(linedit_string *out) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[0m");
-    linedit_stringaddcstring(out, code);
-}
-
-/** @brief Writes a control sequence to set a given color */
-void linedit_setcolor(linedit_string *out, linedit_color col) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[%im", (col==LINEDIT_DEFAULTCOLOR ? 0: 30+col));
-    linedit_stringaddcstring(out, code);
-}
-
-/** @brief Writes a control sequence to set a given emphasis */
-void linedit_setemphasis(linedit_string *out, linedit_emphasis emph) {
-    char code[LINEDIT_CODESTRINGSIZE];
-    switch (emph) {
-        case LINEDIT_BOLD: sprintf(code, "\033[1m"); break;
-        case LINEDIT_UNDERLINE: sprintf(code, "\033[4m"); break;
-        case LINEDIT_REVERSE: sprintf(code, "\033[7m"); break;
-        case LINEDIT_NONE: break; 
-    }
-    
-    linedit_stringaddcstring(out, code);
-}
-
 /* **********************************************************************
- * Utility functions
+ * The line editor
  * ********************************************************************** */
 
-/** Adds a string with selection highlighting
- * @param[in] edit - active editor
- * @param[in] in - input string
- * @param[in] offset - offset of string in characters
- * @param[in] length - length of string in characters
- * @param[in] col - color
- * @param[out] out - display plus coloring information written to this string */
-void linedit_addcstringwithselection(lineditor *edit, char *in, size_t offset, size_t length, linedit_color *col, linedit_string *out) {
-    int lposn=-1, rposn=-1;
-    
-    /* If a selection is active, discover its bounds */
-    if (edit->mode==LINEDIT_SELECTIONMODE && !(edit->sposn<0)) {
-        lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn) - (int) offset;
-        rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn) - (int) offset;
-    }
-    
-    /* Set the color if provided */
-    if (col) linedit_setcolor(out, *col);
-    
-    /* Is the text we're showing outside the selected region entirely? */
-    if (rposn<0 || lposn>(int) length) {
-        linedit_stringappend(out, in, length);
-    } else {
-        /* If not, add the characters one by one and insert highlighting */
-        if (lposn<0) {
-            linedit_setemphasis(out, LINEDIT_REVERSE);
-        }
-        char *c=in;
-        for (int i=0; i<length; i++) {
-            if (i==lposn) {
-                linedit_setemphasis(out, LINEDIT_REVERSE);
-            }
-            if (i==rposn) {
-                linedit_setdefaulttext(out);
-                /* Restore the color if one is provided */
-                if (col) linedit_setcolor(out, *col);
-            }
-            int nbytes=linedit_utf8numberofbytes(c);
-            if (nbytes) linedit_stringappend(out, c, nbytes);
-            else nbytes=1; // Corrupted stream
-            c+=nbytes;
-        }
-    }
-}
-
-/** Compare two colormap structs */
-int linedit_colormapcmp(const void *l, const void *r) {
-    linedit_colormap *a = (linedit_colormap *) l;
-    linedit_colormap *b = (linedit_colormap *) r;
-    
-    return a->type - b->type;
-}
-
-/** Returns a color matching tokentype type */
-linedit_color linedit_colorfromtokentype(lineditor *edit, linedit_tokentype type) {
-    linedit_colormap key = { .type = type, .col = LINEDIT_DEFAULTCOLOR };
-    
-    if (edit->color) {
-        linedit_colormap *val = bsearch(&key, edit->color->col, edit->color->ncols, sizeof(linedit_colormap), linedit_colormapcmp);
-        
-        if (val) return val->col;
-    }
-    
-    return LINEDIT_DEFAULTCOLOR;
-}
-
-/** Print a string with syntax coloring */
-void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_string *out) {
-    linedit_tokenizefn tokenizer=edit->color->tokenizer;
-    linedit_color col=LINEDIT_DEFAULTCOLOR;
-    linedit_token tok;
-    unsigned int iter=0;
-    int line=0;
-    
-    for (char *c=in->string; c!=NULL && *c!='\0';) {
-        bool success = (tokenizer) (c, edit->color->tokref, &tok);
-        /* Get the next token */
-        if (success && tok.length>0 && tok.start>=c) {
-            size_t padding=tok.start-c;
-            /* If there's leading unrecognized characters, print them. */
-            if (tok.start>c) {
-                col=LINEDIT_DEFAULTCOLOR;
-                linedit_addcstringwithselection(edit, c, c-in->string, padding, &col, out);
-            }
-            
-            /* Set the color */
-            col = linedit_colorfromtokentype(edit, tok.type);
-            
-            /* Copy the token across */
-            if (tok.length>0) {
-                linedit_addcstringwithselection(edit, tok.start, tok.start-in->string, tok.length, &col, out);
-            }
-            
-            c=tok.start+tok.length;
-        } else {
-            col=LINEDIT_DEFAULTCOLOR;
-            linedit_addcstringwithselection(edit, c, c-in->string, in->length-(c-in->string), &col, out);
-            return; 
-        };
-        iter++;
-        if (iter>in->length) {
-            if (!edit->color->lexwarning) {
-                fprintf(stderr, "\n\rLinedit error: Syntax colorer appears to be stuck in an infinite loop; ensure the tokenizer returns false if it doesn't recognize a token.\n");
-                edit->color->lexwarning=true;
-            }
-            return;
-        }
-    }
-}
-
-/** Print a string without syntax coloring */
-void linedit_showstring(lineditor *edit, linedit_string *in, linedit_string *out) {
-    linedit_addcstringwithselection(edit, in->string, 0, in->length, NULL, out);
-}
-
-/** Refreshes the display */
-void linedit_redraw(lineditor *edit) {
-    int sugglength=0;
-    linedit_string output; /* Holds the output string */
-    linedit_stringinit(&output);
-    
-    // Render the current buffer to the output string
-    linedit_setdefaulttext(&output);
-    
-    if (edit->color) {
-        linedit_syntaxcolorstring(edit, &edit->current, &output);
-    } else {
-        linedit_showstring(edit, &edit->current, &output);
-    }
-    
-    // Display any autocompletion suggestions at the end
-    if (linedit_aresuggestionsavailable(edit)) {
-        char *suggestion = linedit_currentsuggestion(edit);
-        linedit_setemphasis(&output, LINEDIT_BOLD);
-        linedit_stringaddcstring(&output, suggestion);
-        sugglength=(int) strlen(suggestion);
-    }
-    
-    // Reser default text
-    linedit_setdefaulttext(&output);
-    
-    // Retrieve the current editing position
-    int xpos, ypos, nlines;
-    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
-    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
-    
-    /* Determine the left and right hand boundaries */
-    int promptwidth=linedit_stringwidth(&edit->prompt);
-    int stringwidth=linedit_stringwidth(&edit->current);
-    
-    int start=0, end=promptwidth+stringwidth+sugglength;
-    /*if (end>=edit->ncols) {
-        // Are we near the start?
-        if (promptwidth+edit->posn<edit->ncols) {
-            start = 0;
-        } else {
-            start = promptwidth+edit->posn-edit->ncols+1;
-        }
-        end=start+edit->ncols-1;
-    }*/
-    
-    linedit_moveup(ypos); // Move to the starting line
-    linedit_home();
-    linedit_defaulttext();
-    linedit_write(edit->prompt.string);
-    
-    // Now render the output string
-    linedit_renderstring(edit, output.string, start, end);
-    linedit_erasetoendofline();
-    
-    linedit_moveup(nlines-ypos);  // Move to the cursor position
-    linedit_movetocolumn(promptwidth+xpos-start);
-
-    linedit_stringclear(&output);
-}
+/* ----------------------------------------
+ * Get and set editor state
+ * ---------------------------------------- */
 
 /** @brief Gets the current mode */
 lineditormode linedit_getmode(lineditor *edit) {
@@ -1020,16 +981,6 @@ void linedit_advanceposition(lineditor *edit, int delta) {
     if (edit->posn>linewidth) edit->posn=linewidth;
 }
 
-/** @brief Changes the height of the current line editing session */
-void linedit_changeheight(lineditor *edit, int delta) {
-    if (delta>0) {
-        for (int i=0; i<delta; i++) linedit_linefeed();
-    } else for (int i=0; i>delta; i--) {
-        linedit_eraseline();
-        linedit_moveup(1);
-    }
-}
-
 /** @brief Checks if we're at the end of the input */
 bool linedit_atend(lineditor *edit) {
     return (edit->posn==linedit_stringwidth(&edit->current));
@@ -1041,9 +992,84 @@ bool linedit_atnewline(lineditor *edit) {
     return (c && *c=='\n');
 }
 
-/* **********************************************************************
- * Actions
- * ********************************************************************** */
+/* ----------------------------------------
+ * Redraw
+ * ---------------------------------------- */
+
+/** Refreshes the display */
+void linedit_redraw(lineditor *edit) {
+    int sugglength=0;
+    linedit_string output; /* Holds the output string */
+    linedit_stringinit(&output);
+    
+    // Render the current buffer to the output string
+    linedit_stringdefaulttext(&output);
+    
+    if (edit->color) {
+        linedit_syntaxcolorstring(edit, &edit->current, &output);
+    } else {
+        linedit_plainstring(edit, &edit->current, &output);
+    }
+    
+    // Display any autocompletion suggestions at the end
+    if (linedit_aresuggestionsavailable(edit)) {
+        char *suggestion = linedit_currentsuggestion(edit);
+        linedit_stringsetemphasis(&output, LINEDIT_BOLD);
+        linedit_stringaddcstring(&output, suggestion);
+        sugglength=(int) strlen(suggestion);
+    }
+    
+    // Reser default text
+    linedit_stringdefaulttext(&output);
+    
+    // Retrieve the current editing position
+    int xpos, ypos, nlines;
+    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
+    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
+    
+    /* Determine the left and right hand boundaries */
+    int promptwidth=linedit_stringwidth(&edit->prompt);
+    int stringwidth=linedit_stringwidth(&edit->current);
+    
+    int start=0, end=promptwidth+stringwidth+sugglength;
+    /*if (end>=edit->ncols) {
+        // Are we near the start?
+        if (promptwidth+edit->posn<edit->ncols) {
+            start = 0;
+        } else {
+            start = promptwidth+edit->posn-edit->ncols+1;
+        }
+        end=start+edit->ncols-1;
+    }*/
+    
+    linedit_moveup(ypos); // Move to the starting line
+    linedit_home();
+    linedit_defaulttext();
+    linedit_write(edit->prompt.string);
+    
+    // Now render the output string
+    linedit_renderstring(edit, output.string, start, end);
+    linedit_erasetoendofline();
+    
+    linedit_moveup(nlines-ypos);  // Move to the cursor position
+    linedit_movetocolumn(promptwidth+xpos-start);
+
+    linedit_stringclear(&output);
+}
+
+/** @brief Changes the height of the current line editing session */
+void linedit_changeheight(int delta) {
+    if (delta>0) {
+        for (int i=0; i<delta; i++) linedit_linefeed();
+    } else for (int i=0; i>delta; i--) {
+        linedit_eraseline();
+        linedit_moveup(1);
+    }
+}
+
+/* ----------------------------------------
+ * Process key presses
+ * ---------------------------------------- */
 
 /** @brief Process a left keypress */
 void linedit_processleftkeypress(lineditor *edit) {
@@ -1184,7 +1210,12 @@ bool linedit_processkeypress(lineditor *edit) {
                     case 'F': /* Move forward */
                         linedit_processrightkeypress(edit);
                         break;
-                    case 'U': /* Delete whole line */
+                    case 'G': { /* Abort current editing session */
+                        linedit_stringclear(&edit->current);
+                        edit->posn=0;
+                        return false;
+                    }
+                    case 'L': /* Clear buffer */
                         linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                         linedit_stringclear(&edit->current);
                         edit->posn=0;
@@ -1209,9 +1240,9 @@ bool linedit_processkeypress(lineditor *edit) {
     return true;
 }
 
-/* **********************************************************************
- * Line editors for supported and unsupported terminals
- * ********************************************************************** */
+/* ----------------------------------------
+ * Main loops for different terminal types
+ * ---------------------------------------- */
 
 /** If we're not attached to a terminal, e.g. a pipe, simply read the
     file in. */
@@ -1254,12 +1285,19 @@ void linedit_supported(lineditor *edit) {
     while (linedit_processkeypress(edit)) {
         int newnlines=linedit_stringcountlines(&edit->current);
         if (newnlines!=nlines) {
-            linedit_changeheight(edit, newnlines-nlines);
+            linedit_changeheight(newnlines-nlines);
             nlines=newnlines;
         }
         linedit_redraw(edit);
     }
 
+    /* Ensure we're always at the end of the input when redrawing */
+    int cline;
+    nlines=linedit_stringcountlines(&edit->current);
+    linedit_stringcoordinates(&edit->current, edit->posn, NULL, &cline);
+    linedit_changeheight(nlines-cline);
+    linedit_setposition(edit, -1);
+    
     /* Remove any dangling suggestions */
     linedit_stringlistclear(&edit->suggestions);
     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
@@ -1277,6 +1315,41 @@ void linedit_supported(lineditor *edit) {
 /* **********************************************************************
  * Public interface
  * ********************************************************************** */
+
+/** Initialize a line editor */
+void linedit_init(lineditor *edit) {
+    if (!edit) return;
+    edit->color=NULL;
+    edit->ncols=0;
+    linedit_stringlistinit(&edit->history);
+    linedit_stringlistinit(&edit->suggestions);
+    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+    linedit_stringinit(&edit->current);
+    linedit_stringinit(&edit->prompt);
+    linedit_stringinit(&edit->cprompt);
+    linedit_stringinit(&edit->clipboard);
+    linedit_setprompt(edit, LINEDIT_DEFAULTPROMPT);
+    edit->completer=NULL;
+    edit->cref=NULL;
+    edit->multiline=NULL;
+    edit->mlref=NULL;
+}
+
+/** Finalize a line editor */
+void linedit_clear(lineditor *edit) {
+    if (!edit) return;
+    if (edit->color) {
+        free(edit->color);
+        edit->color=NULL;
+    }
+    linedit_historyclear(edit);
+    linedit_stringlistclear(&edit->suggestions);
+    linedit_stringclear(&edit->current);
+    linedit_stringclear(&edit->prompt);
+    linedit_stringclear(&edit->cprompt);
+    linedit_stringclear(&edit->clipboard);
+}
+
 
 /** Public interface to the line editor.
  *  @param   edit - a line editor that has been initialized with linedit_init.
@@ -1372,10 +1445,10 @@ void linedit_displaywithstyle(lineditor *edit, char *string, linedit_color col, 
     if (linedit_checksupport()==LINEDIT_SUPPORTED) {
         linedit_string out;
         linedit_stringinit(&out);
-        linedit_setcolor(&out, col);
-        linedit_setemphasis(&out, emph);
+        linedit_stringsetcolor(&out, col);
+        linedit_stringsetemphasis(&out, emph);
         linedit_stringaddcstring(&out, string);
-        linedit_setdefaulttext(&out);
+        linedit_stringdefaulttext(&out);
         
         printf("%s", out.string);
         
@@ -1397,7 +1470,7 @@ void linedit_displaywithsyntaxcoloring(lineditor *edit, char *string) {
         linedit_stringaddcstring(&in, string);
         
         linedit_syntaxcolorstring(edit, &in, &out);
-        linedit_setdefaulttext(&out);
+        linedit_stringdefaulttext(&out);
         printf("%s", out.string);
         
         linedit_stringclear(&in);
@@ -1413,38 +1486,4 @@ void linedit_displaywithsyntaxcoloring(lineditor *edit, char *string) {
 int linedit_getwidth(lineditor *edit) {
     linedit_getterminalwidth(edit);
     return edit->ncols;
-}
-
-/** Initialize a line editor */
-void linedit_init(lineditor *edit) {
-    if (!edit) return;
-    edit->color=NULL;
-    edit->ncols=0;
-    linedit_stringlistinit(&edit->history);
-    linedit_stringlistinit(&edit->suggestions);
-    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-    linedit_stringinit(&edit->current);
-    linedit_stringinit(&edit->prompt);
-    linedit_stringinit(&edit->cprompt);
-    linedit_stringinit(&edit->clipboard);
-    linedit_setprompt(edit, LINEDIT_DEFAULTPROMPT);
-    edit->completer=NULL;
-    edit->cref=NULL;
-    edit->multiline=NULL;
-    edit->mlref=NULL;
-}
-
-/** Finalize a line editor */
-void linedit_clear(lineditor *edit) {
-    if (!edit) return;
-    if (edit->color) {
-        free(edit->color);
-        edit->color=NULL;
-    }
-    linedit_historyclear(edit);
-    linedit_stringlistclear(&edit->suggestions);
-    linedit_stringclear(&edit->current);
-    linedit_stringclear(&edit->prompt);
-    linedit_stringclear(&edit->cprompt);
-    linedit_stringclear(&edit->clipboard);
 }
