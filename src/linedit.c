@@ -247,7 +247,7 @@ bool linedit_linefeed(void) {
 bool linedit_movetocolumn(int posn) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (posn>0) {
-        sprintf(code, "\r\033[%uC", posn);
+        sprintf(code, "\r\033[%iC", posn);
         return linedit_write(code);
     }
     return true;
@@ -257,7 +257,7 @@ bool linedit_movetocolumn(int posn) {
 bool linedit_moveup(int n) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (n>0) {
-        sprintf(code, "\033[%uA", n);
+        sprintf(code, "\033[%iA", n);
         return linedit_write(code);
     }
     return true;
@@ -267,7 +267,7 @@ bool linedit_moveup(int n) {
  bool linedit_movedown(int n) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (n>0) {
-        sprintf(code, "\033[%uB", n);
+        sprintf(code, "\033[%iB", n);
         return linedit_write(code);
     }
      return true;
@@ -1049,7 +1049,11 @@ void linedit_redraw(lineditor *edit) {
     int promptwidth=linedit_stringwidth(&edit->prompt);
     int stringwidth=linedit_stringwidth(&edit->current);
     
-    int start=0, end=promptwidth+stringwidth+sugglength;
+    char debug[24];
+    sprintf(debug, "[%i,%i]", ypos, nlines);
+    linedit_stringaddcstring(&output, debug);
+    
+    int start=0, end=promptwidth+stringwidth+sugglength+(int) strlen(debug);
     /*if (end>=edit->ncols) {
         // Are we near the start?
         if (promptwidth+edit->posn<edit->ncols) {
@@ -1076,25 +1080,17 @@ void linedit_redraw(lineditor *edit) {
 }
 
 /** @brief Changes the height of the current line editing session, erasing garbage if necessary */
-void linedit_changeheight(lineditor *edit, int oldheight, int newheight) {
+void linedit_changeheight(lineditor *edit, int oldheight, int newheight, int oldvpos, int newvpos) {
     int delta = newheight-oldheight;
     if (delta>0) {
         for (int i=0; i<delta; i++) linedit_linefeed();
     } else {
-        int cline;
-        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &cline);
-        
-        for (int i=cline; i<newheight; i++) { // Erase to end
+        for (int i=0; i<oldheight-oldvpos; i++) { // Erase to end
+            linedit_eraseline();
             linedit_linefeed();
-            linedit_eraseline();
         }
-        
-        linedit_moveup(newheight-cline); // Move back up
-        
-        for (int i=0; i>delta; i--) { // Now move up erasing as we go
-            linedit_eraseline();
-            linedit_moveup(1);
-        }
+        linedit_eraseline();
+        linedit_moveup(oldheight-newvpos);
     }
 }
 
@@ -1330,22 +1326,25 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
-    int nlines=linedit_stringcountlines(&edit->current);
+    int vpos=0, nlines=0; // Keep track of the current vertical position and line number
 
     while (linedit_processkeypress(edit)) {
+        int newvpos;
+        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &newvpos);
         int newnlines=linedit_stringcountlines(&edit->current);
+        
         if (newnlines!=nlines) {
-            linedit_changeheight(edit, nlines, newnlines);
+            linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
             nlines=newnlines;
         }
         linedit_redraw(edit);
+        vpos=newvpos;
     }
 
     /* Ensure we're always on the last line of the input when redrawing before exit */
-    int cline;
     nlines=linedit_stringcountlines(&edit->current);
-    linedit_stringcoordinates(&edit->current, edit->posn, NULL, &cline);
-    for (int i=cline; i<nlines; i++) linedit_linefeed();
+    linedit_stringcoordinates(&edit->current, edit->posn, NULL, &vpos);
+    for (int i=vpos; i<nlines; i++) linedit_linefeed();
     linedit_setposition(edit, -1);
     
     /* Remove any dangling suggestions */
