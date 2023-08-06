@@ -1198,7 +1198,7 @@ bool linedit_processkeypress(lineditor *edit) {
                         linedit_setposition(edit, -1);
                     }
                 } else { // Otherwise simply add a tab character
-                    linedit_stringaddcstring(&edit->current, "\t");
+                    linedit_stringinsert(&edit->current, edit->posn, "\t", 1);
                     linedit_advanceposition(edit, +1);
                 }
                 break;
