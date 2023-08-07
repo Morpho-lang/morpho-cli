@@ -87,8 +87,8 @@ int linedit_cstrcasecmp(char *str1, char *str2) {
 
 /** Checks whether the current terminal is supported */
 linedit_terminaltype linedit_checksupport(void) {
-    /* Make sure we're a tty */
-    if (!isatty(STDIN_FILENO)) {
+    /* Make sure both stdin and stdout are a tty */
+    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
         return LINEDIT_NOTTTY;
     }
      

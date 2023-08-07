@@ -54,7 +54,7 @@ void cli_reporterror(error *err, vm *v) {
                     cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 2, " in module ", err->module);
                 }
                 
-                linedit_displaywithstyle(&linedit, "]", CLI_ERRORCOLOR, CLI_NOEMPHASIS);
+                linedit_displaywithstyle(&linedit, "] ", CLI_ERRORCOLOR, CLI_NOEMPHASIS);
             }
             
             cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, ": ", err->msg, "\n");
