@@ -9,7 +9,6 @@
 
 #include "morpho.h"
 #include "varray.h"
-#include "error.h"
 #include "linedit.h"
 #include "help.h"
 #include "common.h"

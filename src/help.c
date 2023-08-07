@@ -8,11 +8,9 @@
 #include <ctype.h>
 #include <dirent.h>
 
+#include "morpho.h"
 #include "help.h"
-#include "dictionary.h"
-#include "parse.h"
 #include "common.h"
-#include "classes.h"
 #include "resources.h"
 
 /** The interactive help system uses a collection of Markdown files, located in

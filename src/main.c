@@ -8,11 +8,6 @@
 #include <stdarg.h>
 #include "cli.h"
 
-#include "value.h"
-#include "object.h"
-#include "random.h"
-#include "sparse.h"
-
 int main(int argc, const char * argv[]) {
     clioptions opt = CLI_RUN;
     const char *file = NULL;
