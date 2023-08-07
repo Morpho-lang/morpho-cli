@@ -1109,7 +1109,7 @@ void linedit_movetoend(lineditor *edit) {
 /** @brief Process a left keypress */
 void linedit_processarrowkeypress(lineditor *edit, lineditormode mode, int delta) {
     linedit_setmode(edit, mode);
-    linedit_advanceposition(edit, -1);
+    linedit_advanceposition(edit, delta);
 }
 
 /** @brief Change the line */
