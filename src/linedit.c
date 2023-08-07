@@ -1077,7 +1077,10 @@ void linedit_redraw(lineditor *edit) {
 
 /** @brief Changes the height of the current line editing session, erasing garbage if necessary */
 void linedit_changeheight(lineditor *edit, int oldheight, int newheight, int oldvpos, int newvpos) {
-    if (newheight>=oldheight) {
+    if (oldheight==newheight) {
+        if (oldvpos<newvpos) linedit_movedown(newvpos-oldvpos);
+        else linedit_moveup(oldvpos-newvpos);
+    } else if (newheight>oldheight) {
         for (int i=0; i<newheight-oldheight; i++) linedit_linefeed();
     } else {
         for (int i=0; i<oldheight-oldvpos; i++) { // Erase to end
@@ -1104,17 +1107,9 @@ void linedit_movetoend(lineditor *edit) {
  * ---------------------------------------- */
 
 /** @brief Process a left keypress */
-void linedit_processleftkeypress(lineditor *edit, lineditormode mode) {
+void linedit_processarrowkeypress(lineditor *edit, lineditormode mode, int delta) {
     linedit_setmode(edit, mode);
     linedit_advanceposition(edit, -1);
-    if (linedit_atnewline(edit)) linedit_moveup(1);
-}
-
-/** @brief Process a left keypress */
-void linedit_processrightkeypress(lineditor *edit, lineditormode mode) {
-    linedit_setmode(edit, mode);
-    if (linedit_atnewline(edit)) linedit_movedown(1);
-    linedit_advanceposition(edit, +1);
 }
 
 /** @brief Change the line */
@@ -1125,9 +1120,6 @@ void linedit_processchangeline(lineditor *edit, int delta) {
     y=yinit+delta;
     if (y<0) y=0;
     linedit_stringfindposition(&edit->current, x, y, &edit->posn);
-    linedit_stringcoordinates(&edit->current, edit->posn, &x, &y); // Find where we ended up
-    if (y>yinit) linedit_movedown(y-yinit); //
-    if (y<yinit) linedit_moveup(yinit-y);
 }
 
 /** @brief Obtain and process a single keypress */
@@ -1161,16 +1153,16 @@ bool linedit_processkeypress(lineditor *edit) {
                 linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                 break;
             case LEFT:
-                linedit_processleftkeypress(edit, LINEDIT_DEFAULTMODE);
+                linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
                 break;
             case RIGHT:
-                linedit_processrightkeypress(edit, LINEDIT_DEFAULTMODE);
+                linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
                 break;
             case SHIFT_LEFT:
-                linedit_processleftkeypress(edit, LINEDIT_SELECTIONMODE);
+                linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, -1);
                 break;
             case SHIFT_RIGHT:
-                linedit_processrightkeypress(edit, LINEDIT_SELECTIONMODE);
+                linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, +1);
                 break;
             case UP:
             {
@@ -1224,7 +1216,7 @@ bool linedit_processkeypress(lineditor *edit) {
                     }
                         break;
                     case 'B': /* Move backward */
-                        linedit_processleftkeypress(edit, LINEDIT_DEFAULTMODE);
+                        linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
                         break;
                     case 'C': /* Copy */
                         if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
@@ -1249,7 +1241,7 @@ bool linedit_processkeypress(lineditor *edit) {
                     }
                         break;
                     case 'F': /* Move forward */
-                        linedit_processrightkeypress(edit, LINEDIT_DEFAULTMODE);
+                        linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
                         break;
                     case 'G': { /* Abort current editing session */
                         linedit_stringclear(&edit->current);
@@ -1333,13 +1325,10 @@ void linedit_supported(lineditor *edit) {
         int newvpos;
         linedit_stringcoordinates(&edit->current, edit->posn, NULL, &newvpos);
         int newnlines=linedit_stringcountlines(&edit->current);
-        
-        if (newnlines!=nlines) {
-            linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
-            nlines=newnlines;
-        }
+        linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
+            
         linedit_redraw(edit);
-        vpos=newvpos;
+        vpos=newvpos; nlines=newnlines;
     }
 
     /* Ensure we're always on the last line of the input when redrawing before exit */
