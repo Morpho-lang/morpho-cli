@@ -12,7 +12,7 @@ int main(int argc, const char * argv[]) {
     clioptions opt = CLI_RUN;
     const char *file = NULL;
     int i=0;
-
+    
     morpho_initialize();
     
     /* Process command line arguments */

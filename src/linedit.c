@@ -1359,7 +1359,7 @@ void linedit_init(lineditor *edit) {
     edit->ncols=0;
     linedit_stringlistinit(&edit->history);
     linedit_stringlistinit(&edit->suggestions);
-    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+    edit->mode=LINEDIT_DEFAULTMODE;
     linedit_stringinit(&edit->current);
     linedit_stringinit(&edit->prompt);
     linedit_stringinit(&edit->cprompt);
