@@ -1049,11 +1049,7 @@ void linedit_redraw(lineditor *edit) {
     int promptwidth=linedit_stringwidth(&edit->prompt);
     int stringwidth=linedit_stringwidth(&edit->current);
     
-    char debug[24];
-    sprintf(debug, "[%i,%i]", ypos, nlines);
-    linedit_stringaddcstring(&output, debug);
-    
-    int start=0, end=promptwidth+stringwidth+sugglength+(int) strlen(debug);
+    int start=0, end=promptwidth+stringwidth+sugglength;
     /*if (end>=edit->ncols) {
         // Are we near the start?
         if (promptwidth+edit->posn<edit->ncols) {
@@ -1093,6 +1089,14 @@ void linedit_changeheight(lineditor *edit, int oldheight, int newheight, int old
             linedit_moveup(1);
         }
     }
+}
+
+/** @brief Moves to the end of the buffer */
+void linedit_movetoend(lineditor *edit) {
+    int vpos, nlines=linedit_stringcountlines(&edit->current);
+    linedit_stringcoordinates(&edit->current, edit->posn, NULL, &vpos);
+    for (int i=vpos; i<nlines; i++) linedit_linefeed();
+    linedit_setposition(edit, -1);
 }
 
 /* ----------------------------------------
@@ -1170,8 +1174,6 @@ bool linedit_processkeypress(lineditor *edit) {
                 break;
             case UP:
             {
-                if (linedit_historycount(edit)==0) break;
-                
                 if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
                     linedit_setmode(edit, LINEDIT_HISTORYMODE);
                     linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
@@ -1182,8 +1184,6 @@ bool linedit_processkeypress(lineditor *edit) {
             }
                 break;
             case DOWN:
-                if (linedit_historycount(edit)==0) break;
-                
                 if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
                     linedit_historyadvance(edit, -1);
                     linedit_setposition(edit, -1);
@@ -1205,7 +1205,7 @@ bool linedit_processkeypress(lineditor *edit) {
                     char *sugg = linedit_currentsuggestion(edit);
                     if (sugg) {
                         linedit_stringaddcstring(&edit->current, sugg);
-                        linedit_setposition(edit, -1);
+                        linedit_movetoend(edit);
                     }
                 } else { // Otherwise simply add a tab character
                     linedit_stringinsert(&edit->current, edit->posn, "\t", 1);
@@ -1343,10 +1343,7 @@ void linedit_supported(lineditor *edit) {
     }
 
     /* Ensure we're always on the last line of the input when redrawing before exit */
-    nlines=linedit_stringcountlines(&edit->current);
-    linedit_stringcoordinates(&edit->current, edit->posn, NULL, &vpos);
-    for (int i=vpos; i<nlines; i++) linedit_linefeed();
-    linedit_setposition(edit, -1);
+    linedit_movetoend(edit);
     
     /* Remove any dangling suggestions */
     linedit_stringlistclear(&edit->suggestions);
