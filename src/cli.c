@@ -325,10 +325,12 @@ void cli(clioptions opt) {
     }
     
     linedit_clear(&edit);
-    
-    morpho_freeprogram(p);
-    morpho_freecompiler(c);
     morpho_freevm(v);
+    
+    help_finalize();
+    
+    morpho_freecompiler(c);
+    morpho_freeprogram(p);
 }
 
 /* **********************************************************************
