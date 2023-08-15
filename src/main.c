@@ -13,12 +13,6 @@ int main(int argc, const char * argv[]) {
     const char *file = NULL;
     int i=0;
     
-    /*for (int j=0; j<10000; j++) {
-        morpho_initialize();
-        morpho_finalize();
-        
-    }*/
-    
     morpho_initialize();
     
     /* Process command line arguments */

@@ -46,8 +46,8 @@ void cli_reporterror(error *err, vm *v) {
             morpho_stacktrace(v);
         } else {
             if (err->line!=ERROR_POSNUNIDENTIFIABLE && err->posn!=ERROR_POSNUNIDENTIFIABLE) {
-                char posnbuffer[255];
-                sprintf(posnbuffer, " [line %u char %u", err->line, err->posn);
+                char posnbuffer[CLI_BUFFERSIZE];
+                snprintf(posnbuffer, CLI_BUFFERSIZE, " [line %u char %u", err->line, err->posn);
                 linedit_displaywithstyle(&linedit, posnbuffer, CLI_ERRORCOLOR, CLI_NOEMPHASIS);
                 
                 if (err->module) {
@@ -252,14 +252,19 @@ void cli_help (lineditor *edit, char *query, error *err, bool avail) {
 
 /** @brief Provide a command line interface */
 void cli(clioptions opt) {
+    version morphoversion;
+    morpho_version(&morphoversion);
+    char morphoversionstring[VERSION_MAXSTRINGLENGTH];
+    version_tostring(&morphoversion, VERSION_MAXSTRINGLENGTH, morphoversionstring);
+    
     #ifdef MORPHO_LONG_BANNER
         // Original ASCII art source - https://www.asciiart.eu/animals/insects/butterflies
         printf(BLU " ___   ___ \n" RESET);
-        printf(BLU "(" CYN " @ " GRY"\\Y/" CYN " @ " BLU ") " RESET "  |  morpho " MORPHO_VERSIONSTRING "  | \U0001F44B Type 'help' or '?' for help\n");
+        printf(BLU "(" CYN " @ " GRY"\\Y/" CYN " @ " BLU ") " RESET "  |  morpho %s  | \U0001F44B Type 'help' or '?' for help\n", morphoversionstring);
         printf(BLU " \\" CYN"__" GRY"+|+" CYN"__" BLU"/  " RESET "  |  Documentation: https://morpho-lang.readthedocs.io/en/latest/ \n");
         printf(BLU"  {" CYN"_" BLU "/ \\" CYN "_" BLU"}   " RESET "  |  Code: https://github.com/Morpho-lang/morpho \n\n");
     #else
-        printf("\U0001F98B morpho " /* MORPHO_VERSIONSTRING*/ "0.6.0" "  | \U0001F44B Type 'help' or '?' for help\n");
+        printf("\U0001F98B morpho %s | \U0001F44B Type 'help' or '?' for help\n", morphoversionstring);
     #endif
     cli_file=NULL;
     
