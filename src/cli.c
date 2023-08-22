@@ -73,10 +73,7 @@ void cli_printcallbackfn(vm *v, void *ref, char *string) {
 void cli_warningcallbackfn(vm *v, void *ref, error *err) {
     lineditor *linedit = (lineditor *) ref;
     
-    linedit_color col = (err->cat==ERROR_INFO ? CLI_INFOCOLOR : CLI_WARNINGCOLOR);
-    char *type = (err->cat==ERROR_INFO ? "Information" : "Warning");
-    
-    cli_displaywithstyle(linedit, col, CLI_NOEMPHASIS, 6, type, " '", err->id, "': ", err->msg, "\n");
+    cli_displaywithstyle(linedit, CLI_WARNINGCOLOR, CLI_NOEMPHASIS, 5, "Warning '", err->id, "': ", err->msg, "\n");
 }
 
 /* **********************************************************************
