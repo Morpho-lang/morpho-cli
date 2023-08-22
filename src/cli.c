@@ -11,14 +11,8 @@
 
 #define CLI_BUFFERSIZE 1024
 
-
-#define RED   "\x1B[31m"
-#define GRN   "\x1B[32m"
-#define YEL   "\x1B[33m"
 #define BLU   "\x1B[34m"
-#define MAG   "\x1B[35m"
 #define CYN   "\x1B[36m"
-#define WHT   "\x1B[37m"
 #define GRY   "\x1B[38;2;128;128;128m"
 #define RESET "\x1B[0m"
 
@@ -62,6 +56,27 @@ void cli_reporterror(error *err, vm *v) {
     }
     
     linedit_clear(&linedit);
+}
+
+/* **********************************************************************
+ * CLI callbacks
+ * ********************************************************************** */
+
+/** Print callback */
+void cli_printcallbackfn(vm *v, void *ref, char *string) {
+    lineditor *linedit = (lineditor *) ref;
+
+    cli_displaywithstyle(linedit, CLI_DEFAULTCOLOR, LINEDIT_BOLD, 1, string);
+}
+
+/** Warning callback */
+void cli_warningcallbackfn(vm *v, void *ref, error *err) {
+    lineditor *linedit = (lineditor *) ref;
+    
+    linedit_color col = (err->cat==ERROR_INFO ? CLI_INFOCOLOR : CLI_WARNINGCOLOR);
+    char *type = (err->cat==ERROR_INFO ? "Information" : "Warning");
+    
+    cli_displaywithstyle(linedit, col, CLI_NOEMPHASIS, 6, type, " '", err->id, "': ", err->msg, "\n");
 }
 
 /* **********************************************************************
@@ -285,6 +300,9 @@ void cli(clioptions opt) {
     linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
     linedit_multiline(&edit, cli_multiline, NULL, CLI_CONTINUATIONPROMPT);
     linedit_autocomplete(&edit, cli_complete, NULL);
+
+    morpho_setprintfn(v, cli_printcallbackfn, &edit);
+    morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
     
     error err; /* Error structure that received messages from the compiler and VM */
     bool success=false; /* Keep track of whether compilation and execution was successful */

@@ -38,7 +38,7 @@ static objecthelptopic *topics = NULL;
 objecttype objecthelptopictype;
 
 /** Help topic object definitions */
-void objecthelptopic_printfn(object *obj) {
+void objecthelptopic_printfn(object *obj, void *v) {
 }
 
 void objecthelptopic_freefn(object *obj) {
