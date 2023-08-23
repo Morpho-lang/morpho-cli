@@ -312,7 +312,8 @@ void cli(clioptions opt) {
     error_init(&err);
     
     /* Read-evaluate-print loop */
-    for (;;) {
+    for (int n=0;;n++) {
+        if (!tty && n>0) break;
         char *input=NULL;
         
         while (!input) input=linedit(&edit);
@@ -345,9 +346,7 @@ void cli(clioptions opt) {
         } else {
             /* ... otherwise just raise an error. */
             cli_reporterror(&err, v);
-        }
-
-        if (!tty) break; 
+        } 
     }
     
     linedit_clear(&edit);
