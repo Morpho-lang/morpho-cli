@@ -1524,3 +1524,9 @@ int linedit_getwidth(lineditor *edit) {
     return edit->ncols;
 }
 
+/** @brief Checks whether the underlying terminal is a TTY 
+ *  @param[in] edit         Line editor to use
+ *  @returns true if stdin and stdout are ttys */
+bool linedit_checktty(void) {
+    return linedit_checksupport()!=LINEDIT_NOTTTY;
+}

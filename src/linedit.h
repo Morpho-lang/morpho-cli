@@ -240,6 +240,10 @@ void linedit_displaywithsyntaxcoloring(lineditor *edit, char *string);
  *  @returns The width in characters */
 int linedit_getwidth(lineditor *edit);
 
+/** @brief Checks whether the underlying terminal is a TTY 
+ *  @returns true if stdin and stdout are ttys */
+bool linedit_checktty(void);
+
 /** Initialize a line editor */
 void linedit_init(lineditor *edit);
 
