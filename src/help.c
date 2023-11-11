@@ -8,11 +8,9 @@
 #include <ctype.h>
 #include <dirent.h>
 
+#include "morpho.h"
 #include "help.h"
-#include "dictionary.h"
-#include "parse.h"
 #include "common.h"
-#include "classes.h"
 #include "resources.h"
 
 /** The interactive help system uses a collection of Markdown files, located in
@@ -40,7 +38,17 @@ static objecthelptopic *topics = NULL;
 objecttype objecthelptopictype;
 
 /** Help topic object definitions */
-void objecthelptopic_printfn(object *obj) {
+void objecthelptopic_printfn(object *obj, void *v) {
+}
+
+void objecthelptopic_freefn(object *obj) {
+    objecthelptopic *topic = (objecthelptopic *) obj;
+    
+    if (topic->topic) MORPHO_FREE(topic->topic);
+    if (topic->file) MORPHO_FREE(topic->file);
+        
+    dictionary_freecontents(&topic->subtopics, true, false);
+    dictionary_clear(&topic->subtopics);
 }
 
 size_t objecthelptopic_sizefn(object *obj) {
@@ -50,7 +58,7 @@ size_t objecthelptopic_sizefn(object *obj) {
 objecttypedefn objecthelptopicdefn = {
     .printfn = objecthelptopic_printfn,
     .markfn = NULL,
-    .freefn = NULL,
+    .freefn = objecthelptopic_freefn,
     .sizefn = objecthelptopic_sizefn
 };
 
@@ -70,15 +78,6 @@ objecthelptopic *help_newtopic(char *topic, char *file, long int location, objec
     }
     
     return new;
-}
-
-/** Free attached data from a help topic */
-void help_cleartopic (objecthelptopic *topic) {
-    if (topic) {
-        dictionary_clear(&topic->subtopics);
-        free(topic->file); topic->file=NULL;
-        free(topic->topic); topic->topic=NULL;
-    }
 }
 
 /* **********************************************************************
@@ -488,9 +487,9 @@ bool help_initialize(void) {
 void help_finalize(void) {
     while (topics) {
         objecthelptopic *c = topics;
-        help_cleartopic(c);
         topics = c->next;
         object_free((object *) c);
     }
+    dictionary_freecontents(&helpdict, true, false);
     dictionary_clear(&helpdict);
 }

@@ -1,7 +1,7 @@
 /** @file linedit.h
  *  @author T J Atherton
  *
- *  @brief A simple line editor with history, prediction and syntax highlighting
+ *  @brief A simple UTF8 aware line editor with history, completion, multiline editing and syntax highlighting
 */
 
 #ifndef linedit_h
@@ -22,13 +22,19 @@
  * Types
  * ********************************************************************** */
 
+/* -----------------------
+ * Linedit strings
+ * ----------------------- */
+
+typedef struct linedit_string_s linedit_string;
+
 /** lineditor strings */
-typedef struct slinedit_string {
+struct linedit_string_s {
     size_t capacity;  /** Capacity of the string in bytes */
     size_t length; /** Length in bytes */
     char *string; /** String data */
-    struct slinedit_string *next; /** Enable strings to be chained together */
-} linedit_string;
+    linedit_string *next; /** Enable strings to be chained together */
+} ;
 
 /** A list of strings */
 typedef struct {
@@ -50,9 +56,9 @@ typedef struct {
     size_t length;
 } linedit_token;
 
-/** @brief Tokenizer callback
+/** @brief Tokenizer callback function
  *  @param   in    - a string
- *  @param   ref   - System for storing persistent data between calls to the lexer.
+ *  @param   ref   - pointer to a reference structure provided to linedit by the user
  *  @param   tok   - pointer to a token structure that the caller should fill out.
  *  @details This user function is called when linedit needs to tokenize a string.
  *           The function should identify the next token in the string and fill out
@@ -63,15 +69,8 @@ typedef struct {
  *                           in the token
  *             tok->length - should contain the length of the token, in bytes
  *           The function should return true if a token was successfully processed or
- *           false otherwise.
- *
- *           Storing persistent data over a sequance of calls to implement non-CFG:
- *           On the first call, *ref is NULL. You should malloc your structure, initialize it, set *ref to point to it and return the first token.
- *           After that, *ref will point to your structure.
- *           Once linedit is done tokenizing, it will call free on your pointer.
- *           @warning: You must not malloc child structures as these will not be freed. 
- */
-typedef bool (*linedit_tokenizer) (char *in, void **ref, linedit_token *tok);
+ *           false otherwise. */
+typedef bool (*linedit_tokenizefn) (char *in, void *ref, linedit_token *tok);
 
 /* -----------------------
  * Color
@@ -106,20 +105,21 @@ typedef struct {
 
 /** Structure to hold all information related to syntax coloring */
 typedef struct {
-    linedit_tokenizer tokenizer; /* A tokenizer function */
+    linedit_tokenizefn tokenizer; /** A tokenizer function */
+    void *tokref;                 /** Reference passed to tokenizer callback function */
     bool lexwarning;
-    unsigned int ncols;          /* Number of colors provided */
-    linedit_colormap col[];         /* Array of colors, one for each
-                                    token type */
+    unsigned int ncols;           /** Number of colors provided */
+    linedit_colormap col[];       /** Flexible array member mapping token types to colors */
 } linedit_syntaxcolordata;
 
 /* -----------------------
  * Completion
  * ----------------------- */
 
-/** @brief Autocompletion callback
- *  @params  in          - a string
- *  @params  completion  - autocompletion structure
+/** @brief Autocompletion callback function
+ *  @param[in] in     - a string
+ *  @param[in] ref   - pointer to a reference structure provided to linedit by the user
+ *  @param[out] completion  - autocompletion structure
  *  @details This user function is called when linedit requests autocompletion
  *           of a string. The function should identify any possible suggestions
  *           and call linedit_addcompletion to add them one by one.
@@ -131,7 +131,21 @@ typedef struct {
  *           The function should return true if autocompletion was successfully
  *           processed or false otherwise.
 */
-typedef bool (*linedit_completer) (char *in, linedit_stringlist *completion);
+typedef bool (*linedit_completefn) (char *in, void *ref, linedit_stringlist *completion);
+
+/* -----------------------
+ * Multiline callback
+ * ----------------------- */
+
+/** @brief Multiline callback function
+ *  @param[in]  in          - a string
+ *  @param[in]  ref        - pointer to a reference structure provided by the user
+ *  @details This user function is called when linedit wants to know whether
+ *           it should enter multiline mode. The function should parse the 
+ *           input and return true if linedit should go to multiline mode or
+ *           false otherwise. Typically, return true if the input is incomplete 
+*/
+typedef bool (*linedit_multilinefn) (char *in, void *ref);
 
 /* -----------------------
  * lineditor structure
@@ -148,20 +162,26 @@ typedef enum {
 
 /** Holds all state information needed for a line editor */
 typedef struct {
-    lineditormode mode;      /* Current editing mode */
-    int posn;                /* Position of the cursor in characters */
-    int sposn;               /* Starting point of a selection */
-    int ncols;               /* Number of columns */
-    linedit_string prompt;   /* The prompt */
+    lineditormode mode;      /** Current editing mode */
+    int posn;                /** Position of the cursor in UTF8 characters */
+    int sposn;               /** Starting point of a selection */
+    int ncols;               /** Number of columns */
+    linedit_string prompt;   /** The prompt */
+    linedit_string cprompt;   /** Continuation prompt */
     
-    linedit_string current;  /* Current string that's being edited */
-    linedit_string clipboard;  /* Copy/paste clipboard */
+    linedit_string current;  /** Current string that's being edited */
+    linedit_string clipboard;/** Copy/paste clipboard */
     
-    linedit_stringlist history; /* History list */
-    linedit_stringlist suggestions; /* Autocompletion suggestions */
+    linedit_stringlist history; /** History list */
+    linedit_stringlist suggestions; /** Autocompletion suggestions */
     
-    linedit_syntaxcolordata *color; /* Structure to handle syntax coloring */
-    linedit_completer completer; /* Autocompletion */
+    linedit_syntaxcolordata *color; /** Structure to handle syntax coloring */
+    
+    linedit_completefn completer; /** Autocompletion callback function*/
+    void *cref;                   /** Reference for autocompletion callback function */
+    
+    linedit_multilinefn multiline; /** Multiline callback */
+    void *mlref;                   /** Reference for multiline callback function */
 } lineditor;
 
 /* **********************************************************************
@@ -169,51 +189,60 @@ typedef struct {
  * ********************************************************************** */
 
 /** Public interface to the line editor.
- *  @param   edit - a line editor that has been initialized with linedit_init.
+ *  @param[in] edit - A line editor that has been initialized with linedit_init.
  *  @returns the string input by the user, or NULL if nothing entered. */
 char *linedit(lineditor *edit);
 
 /** @brief Configures syntax coloring
- *  @param edit         Line editor to configure
- *  @param tokenizer    A function to be called that will find the next token from a string
- *  @param map         Map from token types to colors */
-void linedit_syntaxcolor(lineditor *edit, linedit_tokenizer tokenizer, linedit_colormap *cols);
+ *  @param[in] edit             Line editor to configure
+ *  @param[in] tokenizer  Callback function that will identify the next token from a string
+ *  @param[in] ref               Reference that will be passed to the tokenizer callback function.
+ *  @param[in] map               Map from token types to colors */
+void linedit_syntaxcolor(lineditor *edit, linedit_tokenizefn tokenizer, void *ref, linedit_colormap *cols);
 
 /** @brief Configures autocomplete
- *  @param edit         Line editor to configure
- *  @param completer    a function */
-void linedit_autocomplete(lineditor *edit, linedit_completer completer);
+ *  @param[in] edit               Line editor to configure
+ *  @param[in] completer    Callback function that will identify autocomplete suggestions
+ *  @param[in] ref                 Reference that will be passed to the autocomplete callback function. */
+void linedit_autocomplete(lineditor *edit, linedit_completefn completer, void *ref);
 
 /** @brief Configures multiline editing
- *  @param edit         Line editor to configure */
-void linedit_multiline(lineditor *edit);
+ *  @param[in] edit              Line editor to configure
+ *  @param[in] multiline   Callback function to test whether to enter multiline mode
+ *  @param[in] ref                 Reference that will be passed to the multiline callback function.
+ *  @param[in] cprompt        Continuation prompt, or NULL to just reuse the regular prompt */
+void linedit_multiline(lineditor *edit, linedit_multilinefn multiline, void *ref, char *cprompt);
 
 /** @brief Adds a completion suggestion
- *  @param completion   completion data structure
- *  @param string       string to add */
+ *  @param[in] completion   Completion data structure
+ *  @param[in] string            String to add */
 void linedit_addsuggestion(linedit_stringlist *completion, char *string);
 
 /** @brief Sets the prompt
- *  @param edit         Line editor to configure
- *  @param prompt       prompt string to use */
+ *  @param[in] edit           Line editor to configure
+ *  @param[in] prompt       Prompt string to use */
 void linedit_setprompt(lineditor *edit, char *prompt);
 
 /** @brief Displays a string with a given color and emphasis
- *  @param edit         Line editor in use
- *  @param string       String to display
- *  @param col          Color
- *  @param emph         Emphasis */
+ *  @param[in] edit           Line editor to use
+ *  @param[in] string      String to display
+ *  @param[in] col             Color
+ *  @param[in] emph           Emphasis */
 void linedit_displaywithstyle(lineditor *edit, char *string, linedit_color col, linedit_emphasis emph);
 
 /** @brief Displays a string with syntax coloring
- *  @param edit         Line editor in use
- *  @param string       String to display */
+ *  @param[in] edit           Line editor to use
+ *  @param[in] string      String to display */
 void linedit_displaywithsyntaxcoloring(lineditor *edit, char *string);
 
 /** @brief Gets the terminal width
- *  @param edit         Line editor in use
+ *  @param[in] edit         Line editor to use
  *  @returns The width in characters */
 int linedit_getwidth(lineditor *edit);
+
+/** @brief Checks whether the underlying terminal is a TTY 
+ *  @returns true if stdin and stdout are ttys */
+bool linedit_checktty(void);
 
 /** Initialize a line editor */
 void linedit_init(lineditor *edit);

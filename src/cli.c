@@ -11,34 +11,69 @@
 
 #define CLI_BUFFERSIZE 1024
 
-#define RED   "\x1B[31m"
-#define GRN   "\x1B[32m"
-#define YEL   "\x1B[33m"
 #define BLU   "\x1B[34m"
-#define MAG   "\x1B[35m"
 #define CYN   "\x1B[36m"
-#define WHT   "\x1B[37m"
 #define GRY   "\x1B[38;2;128;128;128m"
 #define RESET "\x1B[0m"
 
+/** Displays several strings with a specified style using linedit */
+void cli_displaywithstyle(lineditor *edit, linedit_color col, linedit_emphasis emph, int n, ...) {
+    va_list args;
+    va_start(args, n);
+    for (int i=0; i<n; i++) {
+        char *str = va_arg(args, char *);
+        linedit_displaywithstyle(edit, str, col, emph);
+    }
+    va_end(args);
+}
+
 /** Report an error if one has occurred. */
 void cli_reporterror(error *err, vm *v) {
+    lineditor linedit;
+    linedit_init(&linedit);
+    
     if (err->cat!=ERROR_NONE) {
-        printf("%sError '%s' %s", CLI_ERRORCOLOR, err->id , CLI_NORMALTEXT);
+        cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, "Error '", err->id, "'");
+        
         if (ERROR_ISRUNTIMEERROR(*err)) {
-            printf("%s: %s%s\n", CLI_ERRORCOLOR, err->msg, CLI_NORMALTEXT);
+            cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, ": ", err->msg, "\n");
             morpho_stacktrace(v);
         } else {
-            printf("%s", CLI_ERRORCOLOR);
             if (err->line!=ERROR_POSNUNIDENTIFIABLE && err->posn!=ERROR_POSNUNIDENTIFIABLE) {
-                printf("[line %u char %u", err->line, err->posn);
-                if (err->module) printf(" in module %s", err->module);
-                printf("] ");
+                char posnbuffer[CLI_BUFFERSIZE];
+                snprintf(posnbuffer, CLI_BUFFERSIZE, " [line %u char %u", err->line, err->posn);
+                linedit_displaywithstyle(&linedit, posnbuffer, CLI_ERRORCOLOR, CLI_NOEMPHASIS);
+                
+                if (err->module) {
+                    cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 2, " in module ", err->module);
+                }
+                
+                linedit_displaywithstyle(&linedit, "] ", CLI_ERRORCOLOR, CLI_NOEMPHASIS);
             }
             
-            printf(": %s%s\n", err->msg, CLI_NORMALTEXT);
+            cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, ": ", err->msg, "\n");
         }
     }
+    
+    linedit_clear(&linedit);
+}
+
+/* **********************************************************************
+ * CLI callbacks
+ * ********************************************************************** */
+
+/** Print callback */
+void cli_printcallbackfn(vm *v, void *ref, char *string) {
+    lineditor *linedit = (lineditor *) ref;
+
+    cli_displaywithstyle(linedit, CLI_DEFAULTCOLOR, LINEDIT_BOLD, 1, string);
+}
+
+/** Warning callback */
+void cli_warningcallbackfn(vm *v, void *ref, error *err) {
+    lineditor *linedit = (lineditor *) ref;
+    
+    cli_displaywithstyle(linedit, CLI_WARNINGCOLOR, CLI_NOEMPHASIS, 5, "Warning '", err->id, "': ", err->msg, "\n");
 }
 
 /* **********************************************************************
@@ -136,31 +171,31 @@ linedit_colormap cli_tokencolors[] = {
     { LINEDIT_ENDCOLORMAP,      LINEDIT_DEFAULTCOLOR }
 };
 
-/** A tokenizer for syntax coloring that leverages the morpho lexer */
-bool cli_lex(char *in, void **ref, linedit_token *out) {
-    lexer *l=(lexer *) *ref;
+/** A tokenizer for syntax coloring that uses the morpho lexer */
+bool cli_lex(char *in, void *ref, linedit_token *out) {
+    bool success=false;
+    lexer *l=(lexer *) ref;
+    if (!l) return false;
+    lex_init(l, in, 0);
+    
     token tok;
     error err;
     error_init(&err);
-    
-    /* On the first call, allocate and initialize the tokenizer */
-    if (!l) {
-        *ref = l = malloc(sizeof(lexer));
-        lex_init(l, in, 1);
-    }
     
     if (lex(l, &tok, &err)) {
         out->start=(char *) tok.start;
         out->length=tok.length;
         out->type=(linedit_tokentype) tok.type;
-        return (tok.type!=TOKEN_EOF);
+        success=(tok.type!=TOKEN_EOF);
     }
     
-    return false;
+    lex_clear(l);
+    
+    return success;
 }
 
 /** Autocomplete function */
-bool cli_complete(char *in, linedit_stringlist *c) {
+bool cli_complete(char *in, void *ref, linedit_stringlist *c) {
     size_t len=strlen(in);
     
     /* First find the last token in the input */
@@ -187,6 +222,25 @@ bool cli_complete(char *in, linedit_stringlist *c) {
     return success;
 }
 
+/** Multiline function */
+bool cli_multiline(char *in, void *ref) {
+    int nb=0; 
+
+    for (char *c=in; *c!='\0'; c++) {
+        switch (*c) {
+            case '(': nb+=1; break; 
+            case ')': nb-=1; break;
+            case '{': nb+=1; break;
+            case '}': nb-=1; break;
+            case '[': nb+=1; break;
+            case ']': nb-=1; break;
+            default: break; 
+        }
+    }
+
+    return (nb>0);
+}
+
 /** Interactive help */
 void cli_help (lineditor *edit, char *query, error *err, bool avail) {
     char *q=query;
@@ -210,15 +264,24 @@ void cli_help (lineditor *edit, char *query, error *err, bool avail) {
 
 /** @brief Provide a command line interface */
 void cli(clioptions opt) {
+    bool tty=linedit_checktty();
+    version morphoversion;
+    morpho_version(&morphoversion);
+    char morphoversionstring[VERSION_MAXSTRINGLENGTH];
+    version_tostring(&morphoversion, VERSION_MAXSTRINGLENGTH, morphoversionstring);
+    
+    if (tty) {
     #ifdef MORPHO_LONG_BANNER
         // Original ASCII art source - https://www.asciiart.eu/animals/insects/butterflies
         printf(BLU " ___   ___ \n" RESET);
-        printf(BLU "(" CYN " @ " GRY"\\Y/" CYN " @ " BLU ") " RESET "  |  morpho " MORPHO_VERSIONSTRING "  | \U0001F44B Type 'help' or '?' for help\n");
+        printf(BLU "(" CYN " @ " GRY"\\Y/" CYN " @ " BLU ") " RESET "  |  morpho %s  | \U0001F44B Type 'help' or '?' for help\n", morphoversionstring);
         printf(BLU " \\" CYN"__" GRY"+|+" CYN"__" BLU"/  " RESET "  |  Documentation: https://morpho-lang.readthedocs.io/en/latest/ \n");
         printf(BLU"  {" CYN"_" BLU "/ \\" CYN "_" BLU"}   " RESET "  |  Code: https://github.com/Morpho-lang/morpho \n\n");
     #else
-        printf("\U0001F98B morpho " /* MORPHO_VERSIONSTRING*/ "0.6.0" "  | \U0001F44B Type 'help' or '?' for help\n");
+        printf("\U0001F98B morpho %s | \U0001F44B Type 'help' or '?' for help\n", morphoversionstring);
     #endif
+    }
+
     cli_file=NULL;
     
     /* Set up program and compiler */
@@ -227,15 +290,20 @@ void cli(clioptions opt) {
     
     bool help = help_initialize();
     
-    lineditor edit;
-    
     /* Set up VM */
     vm *v = morpho_newvm();
     
+    /* Line editor */
+    lineditor edit;
+    lexer l;
     linedit_init(&edit);
     linedit_setprompt(&edit, CLI_PROMPT);
-    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
-    linedit_autocomplete(&edit, cli_complete);
+    linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
+    linedit_multiline(&edit, cli_multiline, NULL, CLI_CONTINUATIONPROMPT);
+    linedit_autocomplete(&edit, cli_complete, NULL);
+
+    morpho_setprintfn(v, cli_printcallbackfn, &edit);
+    morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
     
     error err; /* Error structure that received messages from the compiler and VM */
     bool success=false; /* Keep track of whether compilation and execution was successful */
@@ -244,7 +312,8 @@ void cli(clioptions opt) {
     error_init(&err);
     
     /* Read-evaluate-print loop */
-    for (;;) {
+    for (int n=0;;n++) {
+        if (!tty && n>0) break;
         char *input=NULL;
         
         while (!input) input=linedit(&edit);
@@ -277,14 +346,16 @@ void cli(clioptions opt) {
         } else {
             /* ... otherwise just raise an error. */
             cli_reporterror(&err, v);
-        }
+        } 
     }
     
     linedit_clear(&edit);
-    
-    morpho_freeprogram(p);
-    morpho_freecompiler(c);
     morpho_freevm(v);
+    
+    help_finalize();
+    
+    morpho_freecompiler(c);
+    morpho_freeprogram(p);
 }
 
 /* **********************************************************************
@@ -403,7 +474,8 @@ static void cli_printline(lineditor *edit, int line, char *prompt, char *src, in
 void cli_disassemblewithsrc(program *p, char *src) {
     lineditor edit;
     linedit_init(&edit);
-    linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
+    lexer l;
+    linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
     
     int line=1, length=0;
     for (unsigned int i=0; src[i]!='\0'; i++) {
@@ -425,7 +497,8 @@ void cli_list(const char *in, int start, int end) {
     
     if (src) {
         linedit_init(&edit);
-        linedit_syntaxcolor(&edit, cli_lex, cli_tokencolors);
+        lexer l;
+        linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
         
         int line=1, length=0;
         for (unsigned int i=0; src[i]!='\0'; i++) {

@@ -8,16 +8,13 @@
 #include <stdarg.h>
 #include "cli.h"
 
-#include "value.h"
-#include "object.h"
-#include "random.h"
-#include "sparse.h"
-
 int main(int argc, const char * argv[]) {
     clioptions opt = CLI_RUN;
     const char *file = NULL;
     int i=0;
-
+    
+    morpho_initialize();
+    
     /* Process command line arguments */
     for (i=1; i<argc; i++) {
         const char *option = argv[i];
@@ -64,8 +61,6 @@ int main(int argc, const char * argv[]) {
             break;
         }
     }
-
-    morpho_initialize();
     
     if (i<argc) morpho_setargs(argc-i-1, argv+i+1); // Pass unprocessed args to the morpho runtime.
 
