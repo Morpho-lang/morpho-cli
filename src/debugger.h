@@ -13,6 +13,6 @@
 
 #define DEBUGGER_COLOR LINEDIT_GREEN
 
-void debugger_enter(vm *v);
+void clidebugger_enter(vm *v);
 
 #endif /* debugger_h */

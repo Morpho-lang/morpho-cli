@@ -82,7 +82,7 @@ void cli_warningcallbackfn(vm *v, void *ref, error *err) {
 void cli_debuggercallbackfn(vm *v, void *ref) {
     lineditor *linedit = (lineditor *) ref;
     
-    debugger_enter(v);
+    clidebugger_enter(v);
 }
 
 /* **********************************************************************

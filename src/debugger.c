@@ -23,9 +23,9 @@ typedef struct {
     lineditor *edit; /** lineeditor for output */
     error *err; /** Error structure to fill out  */
     bool stop;
-} debugger;
+} clidebugger;
 
-void debugger_init(debugger *debug, vm *v, lineditor *edit, error *err) {
+void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
     debug->v=v;
     debug->edit=edit;
     debug->err=err;
@@ -37,7 +37,7 @@ void debugger_init(debugger *debug, vm *v, lineditor *edit, error *err) {
  * ********************************************************************** */
 
 /** Display the morpho banner */
-void debugger_banner(debugger *debug) {
+void clidebugger_banner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "---Morpho debugger---\n");
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "Type '?' or 'h' for help.\n");
     
@@ -48,12 +48,12 @@ void debugger_banner(debugger *debug) {
 }
 
 /** Display the resume text */
-void debugger_resumebanner(debugger *debug) {
+void clidebugger_resumebanner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "---Resuming----------\n");
 }
 
 /** Debugger help */
-void debugger_help(debugger *debug) {
+void clidebugger_help(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1,
         "Available commands:\n"
         "  [b]reakpoint, [c]ontinue, [d]isassemble, [g]arbage collect,\n"
@@ -162,7 +162,7 @@ tokendefn debuggertokens[] = {
 };
 
 /** Initialize the lexer */
-void debugger_initializelexer(lexer *l, char *src) {
+void clidebugger_initializelexer(lexer *l, char *src) {
     lex_init(l, src, 0);
     lex_settokendefns(l, debuggertokens);
     //lex_setprefn(l, json_lexpreprocess);
@@ -173,55 +173,55 @@ void debugger_initializelexer(lexer *l, char *src) {
  * Debugger parser
  * ********************************************************************** */
 
-bool debugger_breakcommand(parser *p, void *out) {
+bool clidebugger_breakcommand(parser *p, void *out) {
 }
 
-bool debugger_clearcommand(parser *p, void *out) {
+bool clidebugger_clearcommand(parser *p, void *out) {
 }
 
-bool debugger_continuecommand(parser *p, void *out) {
+bool clidebugger_continuecommand(parser *p, void *out) {
 }
 
-bool debugger_disassemblecommand(parser *p, void *out) {
+bool clidebugger_disassemblecommand(parser *p, void *out) {
 }
 
-bool debugger_gccommand(parser *p, void *out) {
+bool clidebugger_gccommand(parser *p, void *out) {
     //vm_collectgarbage(((debugger *) out)->v);
 }
 
 /** Display help */
-bool debugger_helpcommand(parser *p, void *out) {
-    debugger_help((debugger *) out);
+bool clidebugger_helpcommand(parser *p, void *out) {
+    clidebugger_help((clidebugger *) out);
 }
 
-bool debugger_infocommand(parser *p, void *out) {
+bool clidebugger_infocommand(parser *p, void *out) {
 }
 
-bool debugger_listcommand(parser *p, void *out) {
+bool clidebugger_listcommand(parser *p, void *out) {
 }
 
-bool debugger_printcommand(parser *p, void *out) {
+bool clidebugger_printcommand(parser *p, void *out) {
 }
 
 /** Quit the debugger */
-bool debugger_quitcommand(parser *p, void *out) {
-    debugger *debug = (debugger *) out;
+bool clidebugger_quitcommand(parser *p, void *out) {
+    clidebugger *debug = (clidebugger *) out;
     debug->stop=true;
 }
 
-bool debugger_setcommand(parser *p, void *out) {
+bool clidebugger_setcommand(parser *p, void *out) {
 }
 
-bool debugger_stepcommand(parser *p, void *out) {
+bool clidebugger_stepcommand(parser *p, void *out) {
 }
 
 /** Display stack trace */
-bool debugger_tracecommand(parser *p, void *out) {
-    morpho_stacktrace(((debugger *) out)->v);
+bool clidebugger_tracecommand(parser *p, void *out) {
+    morpho_stacktrace(((clidebugger *) out)->v);
 }
 
 /** Parses a debugger command using the parse table */
-bool debugger_parsecommand(parser *p, void *out) {
+bool clidebugger_parsecommand(parser *p, void *out) {
     if (!parse_incrementrecursiondepth(p)) return false; // Increment and check
     
     bool success=parse_precedence(p, PREC_ASSIGN, out);
@@ -234,20 +234,20 @@ bool debugger_parsecommand(parser *p, void *out) {
  * Debugger parse table associates tokens to parselets
  * ------------------------------------------------------- */
 
-parserule debugger_rules[] = {
-    PARSERULE_PREFIX(DEBUGGER_BREAK, debugger_breakcommand),
-    PARSERULE_PREFIX(DEBUGGER_CLEAR, debugger_clearcommand),
-    PARSERULE_PREFIX(DEBUGGER_CONTINUE, debugger_continuecommand),
-    PARSERULE_PREFIX(DEBUGGER_DISASSEMBLE, debugger_disassemblecommand),
-    PARSERULE_PREFIX(DEBUGGER_GARBAGECOLLECT, debugger_gccommand),
-    PARSERULE_PREFIX(DEBUGGER_HELP, debugger_helpcommand),
-    PARSERULE_PREFIX(DEBUGGER_INFO, debugger_infocommand),
-    PARSERULE_PREFIX(DEBUGGER_LIST, debugger_listcommand),
-    PARSERULE_PREFIX(DEBUGGER_PRINT, debugger_printcommand),
-    PARSERULE_PREFIX(DEBUGGER_QUIT, debugger_quitcommand),
-    PARSERULE_PREFIX(DEBUGGER_SET, debugger_setcommand),
-    PARSERULE_PREFIX(DEBUGGER_STEP, debugger_stepcommand),
-    PARSERULE_PREFIX(DEBUGGER_TRACE, debugger_tracecommand),
+parserule clidebugger_rules[] = {
+    PARSERULE_PREFIX(DEBUGGER_BREAK, clidebugger_breakcommand),
+    PARSERULE_PREFIX(DEBUGGER_CLEAR, clidebugger_clearcommand),
+    PARSERULE_PREFIX(DEBUGGER_CONTINUE, clidebugger_continuecommand),
+    PARSERULE_PREFIX(DEBUGGER_DISASSEMBLE, clidebugger_disassemblecommand),
+    PARSERULE_PREFIX(DEBUGGER_GARBAGECOLLECT, clidebugger_gccommand),
+    PARSERULE_PREFIX(DEBUGGER_HELP, clidebugger_helpcommand),
+    PARSERULE_PREFIX(DEBUGGER_INFO, clidebugger_infocommand),
+    PARSERULE_PREFIX(DEBUGGER_LIST, clidebugger_listcommand),
+    PARSERULE_PREFIX(DEBUGGER_PRINT, clidebugger_printcommand),
+    PARSERULE_PREFIX(DEBUGGER_QUIT, clidebugger_quitcommand),
+    PARSERULE_PREFIX(DEBUGGER_SET, clidebugger_setcommand),
+    PARSERULE_PREFIX(DEBUGGER_STEP, clidebugger_stepcommand),
+    PARSERULE_PREFIX(DEBUGGER_TRACE, clidebugger_tracecommand),
     PARSERULE_UNUSED(TOKEN_NONE)
 };
 
@@ -256,19 +256,19 @@ parserule debugger_rules[] = {
  * ------------------------------------------------------- */
 
 /** Initializes a parser to parse debugger commands */
-void debugger_initializeparser(parser *p, lexer *l, error *err, void *out) {
+void clidebugger_initializeparser(parser *p, lexer *l, error *err, void *out) {
     parse_init(p, l, err, out);
-    parse_setbaseparsefn(p, debugger_parsecommand);
-    parse_setparsetable(p, debugger_rules);
+    parse_setbaseparsefn(p, clidebugger_parsecommand);
+    parse_setparsetable(p, clidebugger_rules);
 }
 
 /** Parses debugging commands */
-bool debugger_parse(debugger *debug, char *in) {
+bool clidebugger_parse(clidebugger *debug, char *in) {
     lexer l;
-    debugger_initializelexer(&l, in);
+    clidebugger_initializelexer(&l, in);
 
     parser p;
-    debugger_initializeparser(&p, &l, debug->err, debug);
+    clidebugger_initializeparser(&p, &l, debug->err, debug);
     
     bool success=parse(&p);
     
@@ -282,7 +282,7 @@ bool debugger_parse(debugger *debug, char *in) {
  * Debugger REPL
  * ********************************************************************** */
 
-void debugger_enter(vm *v) {
+void clidebugger_enter(vm *v) {
     error err;
     error_init(&err);
     
@@ -290,18 +290,18 @@ void debugger_enter(vm *v) {
     linedit_init(&edit);
     linedit_setprompt(&edit, DEBUGGER_PROMPT);
     
-    debugger debug;
-    debugger_init(&debug, v, &edit, &err);
-    debugger_banner(&debug);
+    clidebugger debug;
+    clidebugger_init(&debug, v, &edit, &err);
+    clidebugger_banner(&debug);
     
     while (!debug.stop) {
         char *input = linedit(&edit);
         if (!input) break;
         
-        debugger_parse(&debug, input);
+        clidebugger_parse(&debug, input);
     }
     
-    debugger_resumebanner(&debug);
+    clidebugger_resumebanner(&debug);
     
     linedit_clear(&edit);
     error_clear(&err);
