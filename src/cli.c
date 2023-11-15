@@ -5,7 +5,9 @@
 */
 
 #include <time.h>
+
 #include "cli.h"
+#include "debugger.h"
 #include "parse.h"
 #include "file.h"
 
@@ -74,6 +76,13 @@ void cli_warningcallbackfn(vm *v, void *ref, error *err) {
     lineditor *linedit = (lineditor *) ref;
     
     cli_displaywithstyle(linedit, CLI_WARNINGCOLOR, CLI_NOEMPHASIS, 5, "Warning '", err->id, "': ", err->msg, "\n");
+}
+
+/** Warning callback */
+void cli_debuggercallbackfn(vm *v, void *ref) {
+    lineditor *linedit = (lineditor *) ref;
+    
+    debugger_enter(v);
 }
 
 /* **********************************************************************
@@ -304,6 +313,7 @@ void cli(clioptions opt) {
 
     morpho_setprintfn(v, cli_printcallbackfn, &edit);
     morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
+    morpho_setdebuggerfn(v, cli_debuggercallbackfn, &edit);
     
     error err; /* Error structure that received messages from the compiler and VM */
     bool success=false; /* Keep track of whether compilation and execution was successful */
