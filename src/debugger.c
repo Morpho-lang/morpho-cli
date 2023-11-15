@@ -8,15 +8,15 @@
 #include "debugger.h"
 #include "parse.h"
 
-/* **********************************************************************
- * Debugger front end
- * ********************************************************************** */
-
 /** @brief Debugger front end
  *
  * @details The debugger front end is implemented using the new lexer and parser:
  * - we define all debugger commands and shortcuts as tokens
  * - debugger commands are implemented via parselets */
+
+/* **********************************************************************
+ * Debugger front end structure
+ * ********************************************************************** */
 
 typedef struct {
     vm *v;  /** Current VM in use */
@@ -24,6 +24,13 @@ typedef struct {
     error *err; /** Error structure to fill out  */
     bool stop;
 } debugger;
+
+void debugger_init(debugger *debug, vm *v, lineditor *edit, error *err) {
+    debug->v=v;
+    debug->edit=edit;
+    debug->err=err;
+    debug->stop=false;
+}
 
 /* **********************************************************************
  * Debugger functions
@@ -166,8 +173,6 @@ void debugger_initializelexer(lexer *l, char *src) {
  * Debugger parser
  * ********************************************************************** */
 
-/** Debugger commands are implemented through the parslet mechanism */
-
 bool debugger_breakcommand(parser *p, void *out) {
 }
 
@@ -181,6 +186,7 @@ bool debugger_disassemblecommand(parser *p, void *out) {
 }
 
 bool debugger_gccommand(parser *p, void *out) {
+    //vm_collectgarbage(((debugger *) out)->v);
 }
 
 /** Display help */
@@ -209,7 +215,9 @@ bool debugger_setcommand(parser *p, void *out) {
 bool debugger_stepcommand(parser *p, void *out) {
 }
 
+/** Display stack trace */
 bool debugger_tracecommand(parser *p, void *out) {
+    morpho_stacktrace(((debugger *) out)->v);
 }
 
 /** Parses a debugger command using the parse table */
@@ -223,7 +231,7 @@ bool debugger_parsecommand(parser *p, void *out) {
 }
 
 /* -------------------------------------------------------
- * JSON parse table
+ * Debugger parse table associates tokens to parselets
  * ------------------------------------------------------- */
 
 parserule debugger_rules[] = {
@@ -273,13 +281,6 @@ bool debugger_parse(debugger *debug, char *in) {
 /* **********************************************************************
  * Debugger REPL
  * ********************************************************************** */
-
-void debugger_init(debugger *debug, vm *v, lineditor *edit, error *err) {
-    debug->v=v;
-    debug->edit=edit;
-    debug->err=err;
-    debug->stop=false;
-}
 
 void debugger_enter(vm *v) {
     error err;
