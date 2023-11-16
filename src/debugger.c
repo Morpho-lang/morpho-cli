@@ -36,21 +36,62 @@ void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
     debug->edit=edit;
     debug->err=err;
     debug->stop=false;
+    
+    /*debug->iindx = vm_currentinstruction(v);
+    int oline=debug->debug->currentline;
+    objectfunction *ofunc=debug->debug->currentfunc;*/
+    
+    /** Fetch info from annotations */
+    /*debug_infofromindx(v->current, debug->iindx, &debug->currentmodule, &debug->currentline, NULL, &debug->currentfunc, NULL);*/
+    
+    /** If we're in single step mode, only stop when we've changed line OR if a breakpoint is explicitly set */
+    /*if (debugger_insinglestep(debug) &&
+        oline==debug->currentline &&
+        ofunc==debug->currentfunc &&
+        !debugger_shouldbreakat(debug, debug->iindx)) return;*/
 }
 
 /* **********************************************************************
  * Debugger functions
  * ********************************************************************** */
 
+/** Prints the location information */
+void clidebugger_printlocation(clidebugger *debug, instructionindx indx) {
+    value module=MORPHO_NIL;
+    int line=0;
+    objectfunction *fn=NULL;
+    objectclass *klass=NULL;
+    debug_infofromindx(debug->v->current, indx, &module, &line, NULL, &fn, &klass);
+    
+    morpho_printf(debug->v, "in ");
+    
+    if (klass) {
+        morpho_printvalue(debug->v, klass->name);
+        morpho_printf(debug->v, ".");
+    }
+    
+    if (!MORPHO_ISNIL(fn->name)) morpho_printvalue(debug->v, fn->name);
+    else if (debug->v->current->global==fn) morpho_printf(debug->v, "global");
+    else morpho_printf(debug->v, "anonymous fn");
+    
+    if (!MORPHO_ISNIL(module)) {
+        morpho_printf(debug->v, " in \"");
+        morpho_printvalue(debug->v, module);
+        morpho_printf(debug->v, "\"");
+    }
+    
+    morpho_printf(debug->v, " at line %i [instruction %ti]", line, indx);
+}
+
 /** Display the morpho banner */
 void clidebugger_banner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "---Morpho debugger---\n");
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "Type '?' or 'h' for help.\n");
     
- /* printf("%s ", (debug->singlestep ? "Single stepping" : "Breakpoint"));
-  debugger_printlocation(v, debug, debug->iindx);
-  printf("\n");
-    */
+    morpho_printf(debug->v, "%s ", (debug->debug->singlestep ? "Single stepping" : "Breakpoint"));
+    clidebugger_printlocation(debug, debug->debug->iindx);
+    
+    morpho_printf(debug->v, "\n");
 }
 
 /** Display the resume text */
@@ -74,6 +115,26 @@ void clidebugger_list(clidebugger *debug) {
     
     if (debug_infofromindx(debug->v->current, vm_previnstruction(debug->v), &module, &line, NULL, NULL, NULL)) {
         cli_list((MORPHO_ISSTRING(module) ? MORPHO_GETCSTRING(module): NULL), line-5, line+5);
+    }
+}
+
+/* **********************************************************************
+ * Info commands
+ * ********************************************************************** */
+
+/** Displays active breakpoints */
+void clidebugger_showbreakpoints(clidebugger *debug) {
+    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "Active breakpoints:\n");
+    for (instructionindx i=0; i<debug->debug->breakpoints.count; i++) {
+        if (debug->debug->breakpoints.data[i]!='\0') {
+            cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "  Breakpoint ");
+            //debugger_printlocation(v, debug, i);
+            cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "\n");
+        } /*else if (DECODE_OP(v->current->code.data[i])==OP_BREAK) {
+            printf("  Break ");
+            debugger_printlocation(v, debug, i);
+            printf("\n");
+        }*/
     }
 }
 
@@ -241,7 +302,7 @@ bool clidebugger_infocommand(parser *p, void *out) {
         parse_checktokenadvance(p, DEBUGGER_ADDRESS)) {
         
     } else if (parse_checktokenadvance(p, DEBUGGER_BREAK)) {
-        
+        //debugger_showbreakpoints(v, debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_GLOBALS) ||
                parse_checktokenadvance(p, DEBUGGER_G)) {
         
@@ -249,7 +310,7 @@ bool clidebugger_infocommand(parser *p, void *out) {
         
     } else if (parse_checktokenadvance(p, DEBUGGER_STACK) ||
                parse_checktokenadvance(p, DEBUGGER_STEP)) {
-        debug_showstack(debug->v);
+        //debug_showstack(debug->v);
     } else {
         clidebugger_infohelp(debug);
     }
