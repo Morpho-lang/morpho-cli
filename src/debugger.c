@@ -222,7 +222,9 @@ bool clidebugger_helpcommand(parser *p, void *out) {
 bool clidebugger_infocommand(parser *p, void *out) {
 }
 
+/** List the program */
 bool clidebugger_listcommand(parser *p, void *out) {
+    clidebugger_list((clidebugger *) out);
 }
 
 bool clidebugger_printcommand(parser *p, void *out) {
