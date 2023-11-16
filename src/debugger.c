@@ -77,6 +77,18 @@ void clidebugger_list(clidebugger *debug) {
     }
 }
 
+/** Debugger help */
+void clidebugger_infohelp(clidebugger *debug) {
+    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1,
+        "Valid info commands: \n"
+        "  info address n: Displays the address of register n.\n"
+        "  info break: Displays all breakpoints.\n"
+        "  info globals: Displays the contents of all globals.\n"
+        "  info global n: Displays the contents of global n.\n"
+        "  info registers: Displays the contents of all registers.\n"
+        "  info stack: Displays the stack.\n");
+}
+
 /* **********************************************************************
  * Debugger lexer
  * ********************************************************************** */
@@ -219,7 +231,30 @@ bool clidebugger_helpcommand(parser *p, void *out) {
     clidebugger_help((clidebugger *) out);
 }
 
+/** Info comand */
 bool clidebugger_infocommand(parser *p, void *out) {
+    clidebugger *debug = (clidebugger *) out;
+    
+    if (!parse_advance(p)) return false;
+    
+    if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) ||
+        parse_checktokenadvance(p, DEBUGGER_ADDRESS)) {
+        
+    } else if (parse_checktokenadvance(p, DEBUGGER_BREAK)) {
+        
+    } else if (parse_checktokenadvance(p, DEBUGGER_GLOBALS) ||
+               parse_checktokenadvance(p, DEBUGGER_G)) {
+        
+    } else if (parse_checktokenadvance(p, DEBUGGER_REGISTERS)) {
+        
+    } else if (parse_checktokenadvance(p, DEBUGGER_STACK) ||
+               parse_checktokenadvance(p, DEBUGGER_STEP)) {
+        debug_showstack(debug->v);
+    } else {
+        clidebugger_infohelp(debug);
+    }
+    
+    return true;
 }
 
 /** List the program */
