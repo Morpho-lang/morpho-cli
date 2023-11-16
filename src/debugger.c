@@ -67,6 +67,16 @@ void clidebugger_help(clidebugger *debug) {
         "  [t]race, [x]clear\n");
 }
 
+/** Source listing */
+void clidebugger_list(clidebugger *debug) {
+    int line=0;
+    value module=MORPHO_NIL;
+    
+    if (debug_infofromindx(debug->v->current, vm_previnstruction(debug->v), &module, &line, NULL, NULL, NULL)) {
+        cli_list((MORPHO_ISSTRING(module) ? MORPHO_GETCSTRING(module): NULL), line-5, line+5);
+    }
+}
+
 /* **********************************************************************
  * Debugger lexer
  * ********************************************************************** */
@@ -227,7 +237,11 @@ bool clidebugger_quitcommand(parser *p, void *out) {
 bool clidebugger_setcommand(parser *p, void *out) {
 }
 
+/** Single step */
 bool clidebugger_stepcommand(parser *p, void *out) {
+    clidebugger *debug = (clidebugger *) out;
+    debugger_setsinglestep(debug->debug, true);
+    debug->stop=true;
 }
 
 /** Display stack trace */
