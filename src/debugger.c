@@ -211,7 +211,7 @@ void clidebugger_initializelexer(lexer *l, char *src) {
     lex_init(l, src, 0);
     lex_settokendefns(l, debuggertokens);
     lex_setnumbertype(l, DEBUGGER_INTEGER, TOKEN_NONE, TOKEN_NONE);
-    //lex_setprefn(l, clidebugger_lexpreprocess);
+    //lex_setsymboltype(l, DEBUGGER_SYMBOL);
     lex_seteof(l, DEBUGGER_EOF);
 }
 
@@ -219,10 +219,30 @@ void clidebugger_initializelexer(lexer *l, char *src) {
  * Debugger parser
  * ********************************************************************** */
 
+/** Breakpoints syntax:
+    * integer x         = break at instruction given by x
+    * integer x          = break at line x
+    * symbol [ . symbol ] = break at function or method call */
+bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
+    long instr;
+    if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) &&
+        parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
+        parse_tokentointeger(p, &instr)) {
+        printf("break *%i\n", (int) instr);
+    } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
+               parse_tokentointeger(p, &instr)) {
+        printf("break %i\n", (int) instr);
+    } else if (parse_checktokenadvance(p, DEBUGGER_SYMBOL)) {
+        
+    }
+}
+
 bool clidebugger_breakcommand(parser *p, void *out) {
+    clidebugger_parsebreakpoint(p, (clidebugger *) out, true);
 }
 
 bool clidebugger_clearcommand(parser *p, void *out) {
+    clidebugger_parsebreakpoint(p, (clidebugger *) out, false);
 }
 
 /** Continue command */
@@ -241,7 +261,7 @@ bool clidebugger_disassemblecommand(parser *p, void *out) {
 /** Run the garbage collector */
 bool clidebugger_gccommand(parser *p, void *out) {
     clidebugger *debug = (clidebugger *) out;
-    vm_collectgarbage(debug->v);
+    //vm_collectgarbage(debug->v);
 }
 
 /** Display help */
@@ -291,10 +311,11 @@ bool clidebugger_infocommand(parser *p, void *out) {
 
 /** List the program */
 bool clidebugger_listcommand(parser *p, void *out) {
-    clidebugger_list((clidebugger *) out);
+    //clidebugger_list((clidebugger *) out);
 }
 
 bool clidebugger_printcommand(parser *p, void *out) {
+    //
 }
 
 /** Quit the debugger */
@@ -304,6 +325,7 @@ bool clidebugger_quitcommand(parser *p, void *out) {
 }
 
 bool clidebugger_setcommand(parser *p, void *out) {
+    //
 }
 
 /** Single step */
