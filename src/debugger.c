@@ -55,41 +55,13 @@ void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
  * Debugger functions
  * ********************************************************************** */
 
-/** Prints the location information */
-void clidebugger_printlocation(clidebugger *debug, instructionindx indx) {
-    value module=MORPHO_NIL;
-    int line=0;
-    objectfunction *fn=NULL;
-    objectclass *klass=NULL;
-    debug_infofromindx(debug->v->current, indx, &module, &line, NULL, &fn, &klass);
-    
-    morpho_printf(debug->v, "in ");
-    
-    if (klass) {
-        morpho_printvalue(debug->v, klass->name);
-        morpho_printf(debug->v, ".");
-    }
-    
-    if (!MORPHO_ISNIL(fn->name)) morpho_printvalue(debug->v, fn->name);
-    else if (debug->v->current->global==fn) morpho_printf(debug->v, "global");
-    else morpho_printf(debug->v, "anonymous fn");
-    
-    if (!MORPHO_ISNIL(module)) {
-        morpho_printf(debug->v, " in \"");
-        morpho_printvalue(debug->v, module);
-        morpho_printf(debug->v, "\"");
-    }
-    
-    morpho_printf(debug->v, " at line %i [instruction %ti]", line, indx);
-}
-
 /** Display the morpho banner */
 void clidebugger_banner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "---Morpho debugger---\n");
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "Type '?' or 'h' for help.\n");
     
     morpho_printf(debug->v, "%s ", (debug->debug->singlestep ? "Single stepping" : "Breakpoint"));
-    clidebugger_printlocation(debug, debug->debug->iindx);
+    //clidebugger_printlocation(debug, debug->debug->iindx);
     
     morpho_printf(debug->v, "\n");
 }
@@ -121,22 +93,6 @@ void clidebugger_list(clidebugger *debug) {
 /* **********************************************************************
  * Info commands
  * ********************************************************************** */
-
-/** Displays active breakpoints */
-void clidebugger_showbreakpoints(clidebugger *debug) {
-    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "Active breakpoints:\n");
-    for (instructionindx i=0; i<debug->debug->breakpoints.count; i++) {
-        if (debug->debug->breakpoints.data[i]!='\0') {
-            cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "  Breakpoint ");
-            //debugger_printlocation(v, debug, i);
-            cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "\n");
-        } /*else if (DECODE_OP(v->current->code.data[i])==OP_BREAK) {
-            printf("  Break ");
-            debugger_printlocation(v, debug, i);
-            printf("\n");
-        }*/
-    }
-}
 
 /** Debugger help */
 void clidebugger_infohelp(clidebugger *debug) {
@@ -254,7 +210,8 @@ tokendefn debuggertokens[] = {
 void clidebugger_initializelexer(lexer *l, char *src) {
     lex_init(l, src, 0);
     lex_settokendefns(l, debuggertokens);
-    //lex_setprefn(l, json_lexpreprocess);
+    lex_setnumbertype(l, DEBUGGER_INTEGER, TOKEN_NONE, TOKEN_NONE);
+    //lex_setprefn(l, clidebugger_lexpreprocess);
     lex_seteof(l, DEBUGGER_EOF);
 }
 
@@ -294,28 +251,42 @@ bool clidebugger_helpcommand(parser *p, void *out) {
 
 /** Info comand */
 bool clidebugger_infocommand(parser *p, void *out) {
+    long arg;
     clidebugger *debug = (clidebugger *) out;
     
-    if (!parse_advance(p)) return false;
-    
     if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) ||
-        parse_checktokenadvance(p, DEBUGGER_ADDRESS)) {
-        
+        parse_checktokenadvance(p, DEBUGGER_ADDRESS)) { // Needs an integer argument
+        if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
+            parse_tokentointeger(p, &arg)) {
+            printf("Info asterisk %i\n", (int) arg);
+            return true;
+        }
     } else if (parse_checktokenadvance(p, DEBUGGER_BREAK)) {
         //debugger_showbreakpoints(v, debug);
+        return true;
     } else if (parse_checktokenadvance(p, DEBUGGER_GLOBALS) ||
                parse_checktokenadvance(p, DEBUGGER_G)) {
-        
+        if (parse_checktokenadvance(p, DEBUGGER_INTEGER)) {
+            if (parse_tokentointeger(p, &arg)) {
+                printf("Info global %i\n", (int) arg);
+                return true;
+            }
+        } else {
+            printf("Info globals\n");
+        }
+        return true;
     } else if (parse_checktokenadvance(p, DEBUGGER_REGISTERS)) {
-        
+        //debug_showregisters(debug->v);
+        return true;
     } else if (parse_checktokenadvance(p, DEBUGGER_STACK) ||
                parse_checktokenadvance(p, DEBUGGER_STEP)) {
         //debug_showstack(debug->v);
-    } else {
-        clidebugger_infohelp(debug);
+        return true;
     }
+
+    clidebugger_infohelp(debug);
     
-    return true;
+    return false;
 }
 
 /** List the program */
