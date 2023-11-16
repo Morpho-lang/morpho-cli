@@ -4,9 +4,13 @@
  *  @brief Command line debugger
 */
 
-#include "morpho.h"
-#include "debugger.h"
+#include "compile.h"
+#include "vm.h"
 #include "parse.h"
+#include "debug.h"
+
+#include "debugger.h"
+#include "gc.h"
 
 /** @brief Debugger front end
  *
@@ -20,6 +24,7 @@
 
 typedef struct {
     vm *v;  /** Current VM in use */
+    debugger *debug; /** Debugger */
     lineditor *edit; /** lineeditor for output */
     error *err; /** Error structure to fill out  */
     bool stop;
@@ -27,6 +32,7 @@ typedef struct {
 
 void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
     debug->v=v;
+    debug->debug=vm_getdebugger(v);
     debug->edit=edit;
     debug->err=err;
     debug->stop=false;
@@ -179,14 +185,23 @@ bool clidebugger_breakcommand(parser *p, void *out) {
 bool clidebugger_clearcommand(parser *p, void *out) {
 }
 
+/** Continue command */
 bool clidebugger_continuecommand(parser *p, void *out) {
+    clidebugger *debug = (clidebugger *) out;
+    debugger_setsinglestep(debug->debug, false);
+    debug->stop=true;
 }
 
+/** Disassemble command */
 bool clidebugger_disassemblecommand(parser *p, void *out) {
+    clidebugger *debug = (clidebugger *) out;
+    debug_disassemble(debug->v->current, debug->debug->currentline);
 }
 
+/** Run the garbage collector */
 bool clidebugger_gccommand(parser *p, void *out) {
-    //vm_collectgarbage(((debugger *) out)->v);
+    clidebugger *debug = (clidebugger *) out;
+    vm_collectgarbage(debug->v);
 }
 
 /** Display help */
