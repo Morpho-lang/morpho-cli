@@ -292,6 +292,7 @@ bool clidebugger_helpcommand(parser *p, void *out) {
 
 /** Info comand */
 bool clidebugger_infocommand(parser *p, void *out) {
+    bool success=false;
     long arg;
     clidebugger *debug = (clidebugger *) out;
     
@@ -299,36 +300,27 @@ bool clidebugger_infocommand(parser *p, void *out) {
         parse_checktokenadvance(p, DEBUGGER_ADDRESS)) { // Needs an integer argument
         if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
             parse_tokentointeger(p, &arg)) {
-            printf("Info asterisk %i\n", (int) arg);
-            //debugger_showaddress(debug->debug, (registerindx) arg);
-            return true;
+            success=debugger_showaddress(debug->debug, (registerindx) arg);
         }
     } else if (parse_checktokenadvance(p, DEBUGGER_BREAK)) {
-        //debugger_showbreakpoints(v, debug);
-        return true;
+        success=debugger_showbreakpoints(debug->debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_GLOBALS) ||
                parse_checktokenadvance(p, DEBUGGER_G)) {
         if (parse_checktokenadvance(p, DEBUGGER_INTEGER)) {
             if (parse_tokentointeger(p, &arg)) {
-                printf("Info global %i\n", (int) arg);
-                return true;
+                success=debugger_showglobal(debug->debug, (indx) arg);
             }
-        } else {
-            printf("Info globals\n");
-        }
-        return true;
+        } else success=debugger_showglobals(debug->debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_REGISTERS)) {
-        //debug_showregisters(debug->v);
-        return true;
+        success=debugger_showregisters(debug->debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_STACK) ||
                parse_checktokenadvance(p, DEBUGGER_STEP)) {
-        //debug_showstack(debug->v);
-        return true;
+        success=debugger_showstack(debug->debug);
     }
 
-    clidebugger_infohelp(debug);
+    if (!success) clidebugger_infohelp(debug);
     
-    return false;
+    return success;
 }
 
 /** List the program */
