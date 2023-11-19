@@ -273,7 +273,7 @@ bool clidebugger_continuecommand(parser *p, void *out) {
 /** Disassemble command */
 bool clidebugger_disassemblecommand(parser *p, void *out) {
     clidebugger *debug = (clidebugger *) out;
-    debug_disassemble(debugger_currentvm(debug->debug)->current, debug->debug->currentline);
+    debug_disassemble(debugger_currentvm(debug->debug)->current, &debug->debug->currentline);
     return true;
 }
 
