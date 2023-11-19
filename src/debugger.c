@@ -34,19 +34,6 @@ void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
     debug->edit=edit;
     debug->err=err;
     debug->stop=false;
-    
-    /*debug->iindx = vm_currentinstruction(v);
-    int oline=debug->debug->currentline;
-    objectfunction *ofunc=debug->debug->currentfunc;*/
-    
-    /** Fetch info from annotations */
-    /*debug_infofromindx(v->current, debug->iindx, &debug->currentmodule, &debug->currentline, NULL, &debug->currentfunc, NULL);*/
-    
-    /** If we're in single step mode, only stop when we've changed line OR if a breakpoint is explicitly set */
-    /*if (debugger_insinglestep(debug) &&
-        oline==debug->currentline &&
-        ofunc==debug->currentfunc &&
-        !debugger_shouldbreakat(debug, debug->iindx)) return;*/
 }
 
 /* **********************************************************************
@@ -59,7 +46,7 @@ void clidebugger_banner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "Type '?' or 'h' for help.\n");
     
     morpho_printf(debugger_currentvm(debug->debug), "%s ", (debug->debug->singlestep ? "Single stepping" : "Breakpoint"));
-    //clidebugger_printlocation(debug, debug->debug->iindx);
+    debugger_showlocation(debug->debug, debug->debug->iindx);
     
     morpho_printf(debugger_currentvm(debug->debug), "\n");
 }
@@ -361,7 +348,7 @@ bool clidebugger_printcommand(parser *p, void *out) {
 /** Quit the debugger */
 bool clidebugger_quitcommand(parser *p, void *out) {
     clidebugger *debug = (clidebugger *) out;
-    //debugger_quit(debug->debug);
+    debugger_quit(debug->debug);
     clidebugger_stop(debug);
     return true;
 }
