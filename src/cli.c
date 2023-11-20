@@ -344,7 +344,7 @@ void cli(clioptions opt) {
         if (success) {
             /* If compilation was successful, and we're in interactive mode, execute... */
             if (opt & CLI_DISASSEMBLE) {
-                morpho_disassemble(p, NULL);
+                morpho_disassemble(v, p, NULL);
             }
             if (opt & CLI_RUN) {
                 success=morpho_debug(v, p);
@@ -397,7 +397,7 @@ void cli_run(const char *in, clioptions opt) {
                 if (opt & CLI_DISASSEMBLESHOWSRC) {
                     cli_disassemblewithsrc(p, src);
                 } else {
-                    morpho_disassemble(p, NULL);
+                    morpho_disassemble(v, p, NULL);
                 }
             }
             if (opt & CLI_RUN) {
@@ -492,7 +492,7 @@ void cli_disassemblewithsrc(program *p, char *src) {
         length++;
         if (src[i]=='\n' || src[i]=='\0') {
             cli_printline(&edit, line, ">>>", src+i-length+1, length);
-            morpho_disassemble(p, &line);
+            morpho_disassemble(NULL, p, NULL);
             line++; length=0;
         }
     }
