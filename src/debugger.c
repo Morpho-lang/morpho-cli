@@ -43,7 +43,7 @@ void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
 /** Display the morpho banner */
 void clidebugger_banner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "---Morpho debugger---\n");
-    cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "Type '?' or 'h' for help.\n");
+    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "Type '?' or 'h' for help.\n");
     
     morpho_printf(debugger_currentvm(debug->debug), "%s ", (debug->debug->singlestep ? "Single stepping" : "Breakpoint"));
     debugger_showlocation(debug->debug, debug->debug->iindx);
@@ -404,6 +404,7 @@ parserule clidebugger_rules[] = {
     PARSERULE_PREFIX(DEBUGGER_CONTINUE, clidebugger_continuecommand),
     PARSERULE_PREFIX(DEBUGGER_DISASSEMBLE, clidebugger_disassemblecommand),
     PARSERULE_PREFIX(DEBUGGER_GARBAGECOLLECT, clidebugger_gccommand),
+    PARSERULE_PREFIX(DEBUGGER_G, clidebugger_gccommand),
     PARSERULE_PREFIX(DEBUGGER_HELP, clidebugger_helpcommand),
     PARSERULE_PREFIX(DEBUGGER_INFO, clidebugger_infocommand),
     PARSERULE_PREFIX(DEBUGGER_LIST, clidebugger_listcommand),
@@ -436,6 +437,10 @@ bool clidebugger_parse(clidebugger *debug, char *in) {
     
     bool success=parse(&p);
     
+    if (!success) {
+        cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "Unrecognized command\n");
+    }
+    
     parse_clear(&p);
     lex_clear(&l);
     
@@ -448,7 +453,6 @@ bool clidebugger_parse(clidebugger *debug, char *in) {
 
 void clidebugger_enter(vm *v) {
     error err;
-    error_init(&err);
     
     lineditor edit;
     linedit_init(&edit);
