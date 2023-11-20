@@ -229,8 +229,14 @@ void clidebugger_initializelexer(lexer *l, char *src) {
  * ********************************************************************** */
 
 /** Parses a symbol */
-bool clidebugger_parsesymbol(parser *p, clidebugger *debug) {
-    return parse_checktokenadvance(p, DEBUGGER_SYMBOL);
+bool clidebugger_parsesymbol(parser *p, clidebugger *debug, value *out) {
+    bool success=false;
+    if (parse_checktokenadvance(p, DEBUGGER_SYMBOL)) {
+        
+        
+        success=true;
+    }
+    return success;
 }
 
 /** Breakpoints syntax:
@@ -247,7 +253,7 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &instr)) {
         printf("break %i\n", (int) instr);
-    } else if (clidebugger_parsesymbol(p, debug)) {
+    } else if (clidebugger_parsesymbol(p, debug, NULL)) {
         printf("break <<symbol>>\n");
     } else {
         clidebugger_breakhelp(debug);
@@ -330,9 +336,11 @@ bool clidebugger_listcommand(parser *p, void *out) {
     return true;
 }
 
+/** Prints the contents of a symbol */
 bool clidebugger_printcommand(parser *p, void *out) {
     clidebugger *debug = (clidebugger *) out;
-    if (clidebugger_parsesymbol(p, debug)) {
+    value symbol = MORPHO_NIL;
+    if (clidebugger_parsesymbol(p, debug, &symbol)) {
         
     }
     return true;
