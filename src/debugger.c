@@ -238,6 +238,7 @@ bool clidebugger_parsesymbol(parser *p, clidebugger *debug) {
     * integer x          = break at line x
     * symbol [ . symbol ] = break at function or method call */
 bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
+    bool success=false;
     long instr;
     if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) &&
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
@@ -251,7 +252,7 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
     } else {
         clidebugger_breakhelp(debug);
     }
-    return true;
+    return success;
 }
 
 bool clidebugger_breakcommand(parser *p, void *out) {
@@ -359,7 +360,11 @@ bool clidebugger_setcommand(parser *p, void *out) {
     
     if (!parse_checktokenadvance(p, DEBUGGER_EQ)) goto clidebugger_setcommanderr;
         
-    clidebugger_parsesymbol(p, debug);
+    value val;
+    if (parse_value(p->lex->start, &val)) {
+        //*dest = val;
+        //morpho_printvalue(NULL, val);
+    } else printf("Couldn't parse expression.\n");
     
     return true;
     
@@ -453,6 +458,7 @@ bool clidebugger_parse(clidebugger *debug, char *in) {
 
 void clidebugger_enter(vm *v) {
     error err;
+    error_init(&err);
     
     lineditor edit;
     linedit_init(&edit);

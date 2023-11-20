@@ -80,8 +80,6 @@ void cli_warningcallbackfn(vm *v, void *ref, error *err) {
 
 /** Warning callback */
 void cli_debuggercallbackfn(vm *v, void *ref) {
-    lineditor *linedit = (lineditor *) ref;
-    
     clidebugger_enter(v);
 }
 
@@ -313,7 +311,7 @@ void cli(clioptions opt) {
 
     morpho_setprintfn(v, cli_printcallbackfn, &edit);
     morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
-    morpho_setdebuggerfn(v, cli_debuggercallbackfn, &edit);
+    morpho_setdebuggerfn(v, cli_debuggercallbackfn, NULL);
     
     error err; /* Error structure that received messages from the compiler and VM */
     bool success=false; /* Keep track of whether compilation and execution was successful */
@@ -402,6 +400,7 @@ void cli_run(const char *in, clioptions opt) {
             }
             if (opt & CLI_RUN) {
                 if (opt & CLI_DEBUG) {
+                    morpho_setdebuggerfn(v, cli_debuggercallbackfn, NULL);
                     success=morpho_debug(v, p);
                 } else if (opt & CLI_PROFILE) {
                     success=morpho_profile(v, p);
