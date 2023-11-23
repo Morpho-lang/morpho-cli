@@ -228,12 +228,20 @@ void clidebugger_initializelexer(lexer *l, char *src) {
  * Debugger parser
  * ********************************************************************** */
 
-/** Parses a symbol */
+/** Checks if a token type contains a keyword */
+bool clidebugger_iskeyword(tokentype type) {
+    return (type>DEBUGGER_INTEGER && type<DEBUGGER_SYMBOL);
+}
+
+/** Parses the next token as a symbol, returning it as a string */
 bool clidebugger_parsesymbol(parser *p, clidebugger *debug, value *out) {
     bool success=false;
-    if (parse_checktokenadvance(p, DEBUGGER_SYMBOL)) {
+    
+    if (parse_checktoken(p, DEBUGGER_SYMBOL) ||
+        clidebugger_iskeyword(p->current.type)) {
+        parse_advance(p);
         
-        
+        *out = parse_tokenasstring(p);
         success=true;
     }
     return success;
@@ -341,7 +349,8 @@ bool clidebugger_printcommand(parser *p, void *out) {
     clidebugger *debug = (clidebugger *) out;
     value symbol = MORPHO_NIL;
     if (clidebugger_parsesymbol(p, debug, &symbol)) {
-        
+        debugger_showsymbol(debug->debug, symbol);
+        morpho_freeobject(symbol);
     }
     return true;
 }
