@@ -347,11 +347,18 @@ bool clidebugger_listcommand(parser *p, void *out) {
 /** Prints the contents of a symbol */
 bool clidebugger_printcommand(parser *p, void *out) {
     clidebugger *debug = (clidebugger *) out;
-    value symbol = MORPHO_NIL;
+    value symbol = MORPHO_NIL, prop = MORPHO_NIL;
     if (clidebugger_parsesymbol(p, debug, &symbol)) {
-        debugger_showsymbol(debug->debug, symbol);
-        morpho_freeobject(symbol);
+        if (parse_checktokenadvance(p, DEBUGGER_DOT) &&
+            clidebugger_parsesymbol(p, debug, &prop)) {
+            debugger_showproperty(debug->debug, symbol, prop);
+        } else {
+            debugger_showsymbol(debug->debug, symbol);
+        }
     }
+    morpho_freeobject(symbol);
+    morpho_freeobject(prop);
+    
     return true;
 }
 
