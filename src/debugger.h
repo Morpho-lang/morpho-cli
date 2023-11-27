@@ -20,6 +20,11 @@
 #define DBG_INFO                        "DbgInfo"
 #define DBG_INFO_MSG                    "Invalid info command."
 
+#define DBG_HELP_INFO      "Available commands:\n" \
+    "  [b]reakpoint, [c]ontinue, [d]isassemble, [g]arbage collect,\n" \
+    "  [?]/[h]elp, [i]nfo, [l]ist, [p]rint, [q]uit, [s]tep, \n" \
+    "  [t]race, [x]clear\n"
+
 #define DBG_INFO_INFO      "Possible info commands: \n" \
     "  info address n: Displays the address of register n.\n" \
     "  info break    : Displays all breakpoints.\n" \

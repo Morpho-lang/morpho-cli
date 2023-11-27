@@ -100,15 +100,6 @@ void clidebugger_showinfo(clidebugger *debug) {
     if (debug->info) cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, debug->info);
 }
 
-/** Debugger help */
-void clidebugger_help(clidebugger *debug) {
-    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1,
-        "Available commands:\n"
-        "  [b]reakpoint, [c]ontinue, [d]isassemble, [g]arbage collect,\n"
-        "  [?]/[h]elp, [i]nfo, [l]ist, [p]rint, [q]uit, [s]tep, \n"
-        "  [t]race, [x]clear\n");
-}
-
 /* **********************************************************************
  * Debugger lexer
  * ********************************************************************** */
@@ -315,7 +306,7 @@ bool clidebugger_gccommand(parser *p, void *out) {
 
 /** Display help */
 bool clidebugger_helpcommand(parser *p, void *out) {
-    clidebugger_help((clidebugger *) out);
+    clidebugger_setinfo((clidebugger *) out, DBG_HELP_INFO);
     return true;
 }
 
