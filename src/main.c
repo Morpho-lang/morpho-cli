@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "cli.h"
+#include "debugger.h"
 
 int main(int argc, const char * argv[]) {
     clioptions opt = CLI_RUN;
@@ -14,6 +15,7 @@ int main(int argc, const char * argv[]) {
     int i=0;
     
     morpho_initialize();
+    clidebugger_initialize();
     
     /* Process command line arguments */
     for (i=1; i<argc; i++) {

@@ -26,6 +26,7 @@ typedef struct {
     debugger *debug; /** Debugger */
     lineditor *edit; /** lineeditor for output */
     error *err; /** Error structure to fill out  */
+    char *info; /** Report any info to the user after error messages */
     bool stop;
 } clidebugger;
 
@@ -33,6 +34,7 @@ void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
     debug->debug=vm_getdebugger(v);
     debug->edit=edit;
     debug->err=err;
+    debug->info=NULL;
     debug->stop=false;
 }
 
@@ -56,6 +58,13 @@ void clidebugger_resumebanner(clidebugger *debug) {
     cli_displaywithstyle(debug->edit, DEBUGGER_COLOR, CLI_NOEMPHASIS, 1, "---Resuming----------\n");
 }
 
+/** Display an error message */
+void clidebugger_reporterror(clidebugger *debug) {
+    if (debug->err->cat!=ERROR_NONE) {
+        cli_displaywithstyle(debug->edit, DEBUGGER_ERROR_COLOR, CLI_NOEMPHASIS, 3, "Error: ", debug->err->msg, "\n");
+    }
+}
+
 /** Source listing */
 void clidebugger_list(clidebugger *debug) {
     int line=0;
@@ -65,7 +74,6 @@ void clidebugger_list(clidebugger *debug) {
     if (debug_infofromindx(v->current, vm_previnstruction(v), &module, &line, NULL, NULL, NULL)) {
         cli_list((MORPHO_ISSTRING(module) ? MORPHO_GETCSTRING(module): NULL), line-5, line+5);
     }
-
 }
 
 /** Tell the CLI debugger to exit after this command */
@@ -74,8 +82,23 @@ void clidebugger_stop(clidebugger *debug) {
 }
  
 /* **********************************************************************
- * Help
+ * Info
  * ********************************************************************** */
+
+/** Set info to display */
+void clidebugger_setinfo(clidebugger *debug, char *info) {
+    debug->info=info;
+}
+
+/** Clear info */
+void clidebugger_clearinfo(clidebugger *debug) {
+    debug->info=NULL;
+}
+
+/** Show info */
+void clidebugger_showinfo(clidebugger *debug) {
+    if (debug->info) cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, debug->info);
+}
 
 /** Debugger help */
 void clidebugger_help(clidebugger *debug) {
@@ -84,35 +107,6 @@ void clidebugger_help(clidebugger *debug) {
         "  [b]reakpoint, [c]ontinue, [d]isassemble, [g]arbage collect,\n"
         "  [?]/[h]elp, [i]nfo, [l]ist, [p]rint, [q]uit, [s]tep, \n"
         "  [t]race, [x]clear\n");
-}
-
-/** Info help */
-void clidebugger_infohelp(clidebugger *debug) {
-    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1,
-        "Valid info commands: \n"
-        "  info address n: Displays the address of register n.\n"
-        "  info break    : Displays all breakpoints.\n"
-        "  info globals  : Displays the contents of all globals.\n"
-        "  info global n : Displays the contents of global n.\n"
-        "  info registers: Displays the contents of all registers.\n"
-        "  info stack    : Displays the stack.\n");
-}
-
-/** Break command help */
-void clidebugger_breakhelp(clidebugger *debug) {
-    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1,
-        "Valid break commands (same syntax for clear): \n"
-        "  break * n     : Break at instruction n.\n"
-        "  break n       : Break at line n\n"
-        "  break <symbol>: Break at a function or method.\n");
-}
-
-/** Set command help */
-void clidebugger_sethelp(clidebugger *debug) {
-    cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1,
-        "Valid set commands: \n"
-        "  set register n = X : Sets register n to X.\n"
-        "  set <symbol> = X   : Sets symbol to X.\n");
 }
 
 /* **********************************************************************
@@ -252,21 +246,41 @@ bool clidebugger_parsesymbol(parser *p, clidebugger *debug, value *out) {
     * integer x          = break at line x
     * symbol [ . symbol ] = break at function or method call */
 bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
-    bool success=false;
-    long instr;
+    value symbol=MORPHO_NIL, method=MORPHO_NIL;
+    
+    long instr=-1, line;
     if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) &&
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &instr)) {
-        printf("break *%i\n", (int) instr);
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &instr)) {
         printf("break %i\n", (int) instr);
-    } else if (clidebugger_parsesymbol(p, debug, NULL)) {
-        printf("break <<symbol>>\n");
+    } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
+        
+        if (parse_checktokenadvance(p, DEBUGGER_DOT) &&
+            clidebugger_parsesymbol(p, debug, &method)) {
+            printf("break ");
+            morpho_printvalue(debug->debug->currentvm, symbol);
+            printf(".");
+            morpho_printvalue(debug->debug->currentvm, method);
+            printf("\n");
+        } else {
+            printf("break <<symbol>>\n");
+        }
+        
     } else {
-        clidebugger_breakhelp(debug);
+        clidebugger_setinfo(debug, DBG_BREAK_INFO);
     }
-    return success;
+    
+    if (instr>=0) {
+        if (set) {
+            debugger_setbreakpoint(debug->debug, (instructionindx) instr);
+        } else {
+            debugger_clearbreakpoint(debug->debug, (instructionindx) instr);
+        }
+    }
+    
+    return (instr>=0);
 }
 
 bool clidebugger_breakcommand(parser *p, void *out) {
@@ -307,7 +321,6 @@ bool clidebugger_helpcommand(parser *p, void *out) {
 
 /** Info comand */
 bool clidebugger_infocommand(parser *p, void *out) {
-    bool success=false;
     long arg;
     clidebugger *debug = (clidebugger *) out;
     
@@ -315,32 +328,34 @@ bool clidebugger_infocommand(parser *p, void *out) {
         parse_checktokenadvance(p, DEBUGGER_ADDRESS)) { // Needs an integer argument
         if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
             parse_tokentointeger(p, &arg)) {
-            success=debugger_showaddress(debug->debug, (registerindx) arg);
+            debugger_showaddress(debug->debug, (registerindx) arg);
         }
     } else if (parse_checktokenadvance(p, DEBUGGER_BREAK)) {
-        success=debugger_showbreakpoints(debug->debug);
+        debugger_showbreakpoints(debug->debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_GLOBALS) ||
                parse_checktokenadvance(p, DEBUGGER_G)) {
         if (parse_checktokenadvance(p, DEBUGGER_INTEGER)) {
             if (parse_tokentointeger(p, &arg)) {
-                success=debugger_showglobal(debug->debug, (indx) arg);
+                debugger_showglobal(debug->debug, (indx) arg);
             }
-        } else success=debugger_showglobals(debug->debug);
+        } else debugger_showglobals(debug->debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_REGISTERS)) {
-        success=debugger_showregisters(debug->debug);
+        debugger_showregisters(debug->debug);
     } else if (parse_checktokenadvance(p, DEBUGGER_STACK) ||
                parse_checktokenadvance(p, DEBUGGER_STEP)) {
-        success=debugger_showstack(debug->debug);
+        debugger_showstack(debug->debug);
+    } else {
+        parse_error(p, true, DBG_INFO);
+        clidebugger_setinfo(debug, DBG_INFO_INFO);
+        return false;
     }
-
-    if (!success) clidebugger_infohelp(debug);
     
-    return success;
+    return true;
 }
 
 /** List the program */
 bool clidebugger_listcommand(parser *p, void *out) {
-    //clidebugger_list((clidebugger *) out);
+    clidebugger_list((clidebugger *) out);
     return true;
 }
 
@@ -355,6 +370,8 @@ bool clidebugger_printcommand(parser *p, void *out) {
         } else {
             debugger_showsymbol(debug->debug, symbol);
         }
+    } else if (parse_checktoken(p, DEBUGGER_EOF)) {
+        debugger_showsymbols(debug->debug);
     }
     morpho_freeobject(symbol);
     morpho_freeobject(prop);
@@ -370,32 +387,46 @@ bool clidebugger_quitcommand(parser *p, void *out) {
     return true;
 }
 
+/** Sets a register, variable or property to a specified (leaf) value */
 bool clidebugger_setcommand(parser *p, void *out) {
+    bool success=false;
     clidebugger *debug = (clidebugger *) out;
     long reg;
+    value symbol = MORPHO_NIL, prop = MORPHO_NIL, val = MORPHO_NIL;
+    enum { SET_NONE, SET_REGISTER, SET_VAR, SET_PROPERTY } mode = SET_NONE;
     
     if (parse_checktokenadvance(p, DEBUGGER_REGISTERS) &&
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &reg)) {
-        printf("set register %i \n", (int) reg);
-    } else if (parse_checktokenadvance(p, DEBUGGER_SYMBOL)) {
-        printf("set <symbol>\n");
+        mode=SET_REGISTER;
+    } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
+        mode=SET_VAR;
     }
     
-    if (!parse_checktokenadvance(p, DEBUGGER_EQ)) goto clidebugger_setcommanderr;
-        
-    value val;
-    if (parse_value(p->lex->start, &val)) {
-        //*dest = val;
-        //morpho_printvalue(NULL, val);
-    } else printf("Couldn't parse expression.\n");
+    if (parse_checktokenadvance(p, DEBUGGER_EQ) &&
+        parse_value(p->lex->start, &val)) {
+        switch (mode) {
+            case SET_REGISTER:
+                success=debugger_setregister(debug->debug, (indx) reg, val);
+                break;
+            case SET_VAR:
+                success=debugger_setsymbol(debug->debug, symbol, val);
+                break;
+            case SET_PROPERTY:
+                success=debugger_setproperty(debug->debug, symbol, val);
+                break;
+            case SET_NONE:
+                break;
+        }
+    } else {
+        parse_error(p, true, DBG_PRS);
+    }
+     
+    morpho_freeobject(symbol);
     
-    return true;
+    if (!success) clidebugger_setinfo(debug, DBG_SET_INFO);
     
-clidebugger_setcommanderr:
-    clidebugger_sethelp(debug);
-    
-    return false;
+    return success;
 }
 
 /** Single step */
@@ -466,10 +497,6 @@ bool clidebugger_parse(clidebugger *debug, char *in) {
     
     bool success=parse(&p);
     
-    if (!success) {
-        cli_displaywithstyle(debug->edit, CLI_DEFAULTCOLOR, CLI_NOEMPHASIS, 1, "Unrecognized command\n");
-    }
-    
     parse_clear(&p);
     lex_clear(&l);
     
@@ -493,14 +520,25 @@ void clidebugger_enter(vm *v) {
     clidebugger_banner(&debug);
     
     while (!debug.stop) {
+        clidebugger_clearinfo(&debug);
         char *input = linedit(&edit);
         if (!input) break;
         
-        clidebugger_parse(&debug, input);
+        if (!clidebugger_parse(&debug, input)) {
+            clidebugger_reporterror(&debug);
+            error_clear(&err);
+        }
+        
+        clidebugger_showinfo(&debug);
     }
     
     clidebugger_resumebanner(&debug);
     
     linedit_clear(&edit);
     error_clear(&err);
+}
+
+void clidebugger_initialize(void) {
+    morpho_defineerror(DBG_PRS, ERROR_PARSE, DBG_PRS_MSG);
+    morpho_defineerror(DBG_INFO, ERROR_PARSE, DBG_INFO_MSG);
 }
