@@ -32,6 +32,7 @@ typedef struct {
 
 void clidebugger_init(clidebugger *debug, vm *v, lineditor *edit, error *err) {
     debug->debug=vm_getdebugger(v);
+    debugger_seterror(debug->debug, err);
     debug->edit=edit;
     debug->err=err;
     debug->info=NULL;
@@ -361,7 +362,7 @@ bool clidebugger_printcommand(parser *p, void *out) {
         } else {
             debugger_showsymbol(debug->debug, symbol);
         }
-    } else if (parse_checktoken(p, DEBUGGER_EOF)) {
+    } else /*if (parse_checktoken(p, DEBUGGER_EOF))*/ {
         debugger_showsymbols(debug->debug);
     }
     morpho_freeobject(symbol);
@@ -392,6 +393,10 @@ bool clidebugger_setcommand(parser *p, void *out) {
         mode=SET_REGISTER;
     } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
         mode=SET_VAR;
+        if (parse_checktokenadvance(p, DEBUGGER_DOT) &&
+            clidebugger_parsesymbol(p, debug, &prop)) {
+            mode=SET_PROPERTY;
+        }
     }
     
     if (parse_checktokenadvance(p, DEBUGGER_EQ) &&
@@ -404,7 +409,7 @@ bool clidebugger_setcommand(parser *p, void *out) {
                 success=debugger_setsymbol(debug->debug, symbol, val);
                 break;
             case SET_PROPERTY:
-                success=debugger_setproperty(debug->debug, symbol, val);
+                success=debugger_setproperty(debug->debug, symbol, prop, val);
                 break;
             case SET_NONE:
                 break;
@@ -414,6 +419,7 @@ bool clidebugger_setcommand(parser *p, void *out) {
     }
      
     morpho_freeobject(symbol);
+    morpho_freeobject(prop);
     
     if (!success) clidebugger_setinfo(debug, DBG_SET_INFO);
     
@@ -515,7 +521,8 @@ void clidebugger_enter(vm *v) {
         char *input = linedit(&edit);
         if (!input) break;
         
-        if (!clidebugger_parse(&debug, input)) {
+        if (!clidebugger_parse(&debug, input) ||
+            morpho_checkerror(&err)) {
             clidebugger_reporterror(&debug);
             error_clear(&err);
         }
