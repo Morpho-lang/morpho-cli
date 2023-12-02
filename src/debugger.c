@@ -245,6 +245,7 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &instr)) {
         debugger_setbreakpoint(debug->debug, (instructionindx) instr);
+        
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &instr)) {
         printf("break %i\n", (int) instr);
@@ -309,7 +310,18 @@ bool clidebugger_gccommand(parser *p, void *out) {
 
 /** Display help */
 bool clidebugger_helpcommand(parser *p, void *out) {
-    clidebugger_setinfo((clidebugger *) out, DBG_HELP_INFO);
+    char *info = DBG_HELP_INFO;
+    
+    if (parse_checktoken(p, DEBUGGER_BREAK)) {
+        info = DBG_BREAK_INFO;
+    } else if (parse_checktoken(p, DEBUGGER_INFO)) {
+        info = DBG_INFO_INFO;
+    } else if (parse_checktoken(p, DEBUGGER_SET)) {
+        info = DBG_SET_INFO;
+    }
+    
+    clidebugger_setinfo((clidebugger *) out, info);
+    
     return true;
 }
 
