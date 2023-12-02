@@ -438,9 +438,7 @@ char *cli_loadsource(const char *in) {
     /* Open the input file if provided */
     if (inn) f=file_openrelative(inn,"r"); // Try opening relative to the working directory
     if (!f) f=fopen(inn, "r"); 
-    if (inn && !f) {
-        return NULL;
-    }
+    if (!f) return NULL;
     
     /* Determine the file size */
     fseek(f, 0L, SEEK_END);
