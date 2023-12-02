@@ -244,9 +244,11 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
     if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) &&
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &instr)) {
+        debugger_setbreakpoint(debug->debug, (instructionindx) instr);
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &instr)) {
         printf("break %i\n", (int) instr);
+        
     } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
         
         if (parse_checktokenadvance(p, DEBUGGER_DOT) &&
