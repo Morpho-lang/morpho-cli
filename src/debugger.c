@@ -257,7 +257,7 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
                 success=debugger_breakatfunction(debug->debug, set, symbol, method);
             } else parse_error(p, true, DBG_EXPCTMTHD);
         } else {
-            success=debugger_breakatfunction(debug->debug, set, symbol, MORPHO_NIL);
+            success=debugger_breakatfunction(debug->debug, set, MORPHO_NIL, symbol);
         }
     } else clidebugger_setinfo(debug, DBG_BREAK_INFO);
     
