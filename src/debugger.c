@@ -339,7 +339,7 @@ bool clidebugger_infocommand(parser *p, void *out) {
                parse_checktokenadvance(p, DEBUGGER_STEP)) {
         debugger_showstack(debug->debug);
     } else {
-        parse_error(p, true, DBG_INFO);
+        if (!parse_checktoken(p, DEBUGGER_EOF)) parse_error(p, true, DBG_INFO);
         clidebugger_setinfo(debug, DBG_INFO_INFO);
         return false;
     }
