@@ -35,6 +35,8 @@
 
 typedef unsigned int clioptions;
 
+extern char *cli_globalsrc;
+
 void cli_displaywithstyle(lineditor *edit, linedit_color col, linedit_emphasis emph, int n, ...);
 void cli_reporterror(error *err, vm *v);
 

@@ -11,6 +11,8 @@
 #include "parse.h"
 #include "file.h"
 
+char *cli_globalsrc=NULL;
+
 #define CLI_BUFFERSIZE 1024
 
 #define BLU   "\x1B[34m"
@@ -87,8 +89,6 @@ void cli_debuggercallbackfn(vm *v, void *ref) {
  * Interactive cli
  * ********************************************************************** */
 
-const char *cli_file;
-
 /** Define colors for different token types */
 linedit_colormap cli_tokencolors[] = {
     { TOKEN_NEWLINE,            LINEDIT_DEFAULTCOLOR },
@@ -143,7 +143,6 @@ linedit_colormap cli_tokencolors[] = {
     { TOKEN_GT,                 LINEDIT_DEFAULTCOLOR },
     { TOKEN_LTEQ,               LINEDIT_DEFAULTCOLOR },
     { TOKEN_GTEQ,               LINEDIT_DEFAULTCOLOR },
-    
     
     { TOKEN_TRUE,               LINEDIT_MAGENTA      },
     { TOKEN_FALSE,              LINEDIT_MAGENTA      },
@@ -249,7 +248,7 @@ bool cli_multiline(char *in, void *ref) {
 }
 
 /** Interactive help */
-void cli_help (lineditor *edit, char *query, error *err, bool avail) {
+void cli_help(lineditor *edit, char *query, error *err, bool avail) {
     char *q=query;
     if (help_querylength(q, NULL)==0) {
         if (err->cat!=ERROR_NONE) {
@@ -288,14 +287,17 @@ void cli(clioptions opt) {
         printf("\U0001F98B morpho %s | \U0001F44B Type 'help' or '?' for help\n", morphoversionstring);
     #endif
     }
-
-    cli_file=NULL;
     
     /* Set up program and compiler */
     program *p = morpho_newprogram();
     compiler *c = morpho_newcompiler(p);
     
     bool help = help_initialize();
+    
+    /* Keep the line by line src as a varray */
+    varray_char src;
+    varray_charinit(&src);
+    varray_charwrite(&src, '\0'); // Begin with zero string
     
     /* Set up VM */
     vm *v = morpho_newvm();
@@ -339,8 +341,14 @@ void cli(clioptions opt) {
         /* Compile code */
         success=morpho_compile(input, c, false, &err);
         
-        if (success) {
-            /* If compilation was successful, and we're in interactive mode, execute... */
+        if (success) { /** If compilation was successful, and we're in interactive mode, execute... */
+            /** Retain input in interactive session */
+            src.count--; // Remove zero terminator
+            varray_charadd(&src, input, (int) strlen(input));
+            varray_charwrite(&src, '\n');
+            varray_charwrite(&src, '\0'); // Ensure zero terminated
+            cli_globalsrc=src.data;
+            
             if (opt & CLI_DISASSEMBLE) {
                 morpho_disassemble(v, p, NULL);
             }
@@ -352,13 +360,15 @@ void cli(clioptions opt) {
                 }
             }
         } else {
-            /* ... otherwise just raise an error. */
+            /** ... otherwise just raise an error. */
             cli_reporterror(&err, v);
         } 
     }
     
     linedit_clear(&edit);
     morpho_freevm(v);
+    
+    varray_charclear(&src);
     
     help_finalize();
     
@@ -377,12 +387,12 @@ void cli_run(const char *in, clioptions opt) {
     vm *v = morpho_newvm();
     
     char *src = cli_loadsource(in);
+    if (src) cli_globalsrc = src;
     
     error err; /* Error structure that received messages from the compiler and VM */
     bool success=false; /* Keep track of whether compilation and execution was successful */
     
     /* Open the input file if provided */
-    cli_file = in;
     file_setworkingdirectory(in);
     
     if (src) {
@@ -428,7 +438,6 @@ void cli_run(const char *in, clioptions opt) {
 
 /** Loads a source file, returning it as a C-string. Call MORPHO_FREE on it when finished. */
 char *cli_loadsource(const char *in) {
-    const char *inn = (in ? in : cli_file);
     FILE *f = NULL; /* Input file */
     int size=0;
     
@@ -436,8 +445,8 @@ char *cli_loadsource(const char *in) {
     varray_charinit(&buffer);
     
     /* Open the input file if provided */
-    if (inn) f=file_openrelative(inn,"r"); // Try opening relative to the working directory
-    if (!f) f=fopen(inn, "r"); 
+    if (in) f=file_openrelative(in,"r"); // Try opening relative to the working directory
+    if (!f) f=fopen(in, "r");
     if (!f) return NULL;
     
     /* Determine the file size */
@@ -467,7 +476,7 @@ char *cli_loadsource(const char *in) {
  * ********************************************************************** */
 
 /** Displays a single line of source */
-static void cli_printline(lineditor *edit, int line, char *prompt, char *src, int length) {
+static void cli_printline(lineditor *edit, int line, char *prompt, const char *src, int length) {
     printf("%s %4u : ", prompt, line);
     /* Display the src line */
     char srcline[length];
@@ -498,8 +507,7 @@ void cli_disassemblewithsrc(program *p, char *src) {
 }
 
 /** Displays a source listing from source lines start to end */
-void cli_list(const char *in, int start, int end) {
-    char *src = cli_loadsource(in);
+void cli_list(const char *src, int start, int end) {
     lineditor edit;
     
     if (src) {
@@ -518,7 +526,6 @@ void cli_list(const char *in, int start, int end) {
         }
         
         linedit_clear(&edit);
-        MORPHO_FREE(src);
     }
 }
 

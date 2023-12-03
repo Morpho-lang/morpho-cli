@@ -67,13 +67,27 @@ void clidebugger_reporterror(clidebugger *debug) {
 }
 
 /** Source listing */
-void clidebugger_list(clidebugger *debug) {
+void clidebugger_list(clidebugger *debug, int *nlines) {
     int line=0;
     value module=MORPHO_NIL;
     vm *v = debugger_currentvm(debug->debug);
     
     if (debug_infofromindx(v->current, vm_previnstruction(v), &module, &line, NULL, NULL, NULL)) {
-        cli_list((MORPHO_ISSTRING(module) ? MORPHO_GETCSTRING(module): NULL), line-5, line+5);
+        char *src=cli_globalsrc;
+        char *in = (MORPHO_ISSTRING(module) ? MORPHO_GETCSTRING(module): NULL);
+        
+        if (in) src=cli_loadsource(in);
+        
+        if (src) {
+            int n = 5;
+            if (nlines) n = *nlines;
+            
+            int start = line - n, end = line + n;
+            if (start<0) start = 0;
+            
+            cli_list(src, start, end);
+            if (in) MORPHO_FREE(src);
+        }
     }
 }
 
@@ -350,7 +364,14 @@ bool clidebugger_infocommand(parser *p, void *out) {
 
 /** List the program */
 bool clidebugger_listcommand(parser *p, void *out) {
-    clidebugger_list((clidebugger *) out);
+    long nlinesl;
+    int nlines=-1;
+    if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
+        parse_tokentointeger(p, &nlinesl)) {
+        nlines=(int) nlinesl;
+    }
+    
+    clidebugger_list((clidebugger *) out, (nlines > 0 ? &nlines : NULL));
     return true;
 }
 
