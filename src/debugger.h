@@ -17,6 +17,9 @@
 #define DBG_PRS                         "DbgPrs"
 #define DBG_PRS_MSG                     "Couldn't parse command."
 
+#define DBG_EXPCTMTHD                   "DbgExpctMthd"
+#define DBG_EXPCTMTHD_MSG               "Expected method label."
+
 #define DBG_INFO                        "DbgInfo"
 #define DBG_INFO_MSG                    "Invalid info command."
 

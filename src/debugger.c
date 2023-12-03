@@ -239,43 +239,31 @@ bool clidebugger_parsesymbol(parser *p, clidebugger *debug, value *out) {
     * symbol [ . symbol ] = break at function or method call */
 bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
     value symbol=MORPHO_NIL, method=MORPHO_NIL;
+    bool success=false;
     
     long instr=-1, line;
     if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) &&
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &instr)) {
-        debugger_setbreakpoint(debug->debug, (instructionindx) instr);
-        
+        success=debugger_breakatinstruction(debug->debug, set, (instructionindx) instr);
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &instr)) {
-        printf("break %i\n", (int) instr);
-        
+        success=debugger_breakatline(debug->debug, set, NULL, (int) line);
     } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
         
-        if (parse_checktokenadvance(p, DEBUGGER_DOT) &&
-            clidebugger_parsesymbol(p, debug, &method)) {
-            printf("break ");
-            morpho_printvalue(debug->debug->currentvm, symbol);
-            printf(".");
-            morpho_printvalue(debug->debug->currentvm, method);
-            printf("\n");
+        if (parse_checktokenadvance(p, DEBUGGER_DOT)) {
+            if (clidebugger_parsesymbol(p, debug, &method)) {
+                success=debugger_breakatfunction(debug->debug, set, symbol, method);
+            } else parse_error(p, true, DBG_EXPCTMTHD);
         } else {
-            printf("break <<symbol>>\n");
+            success=debugger_breakatfunction(debug->debug, set, symbol, MORPHO_NIL);
         }
-        
-    } else {
-        clidebugger_setinfo(debug, DBG_BREAK_INFO);
-    }
+    } else clidebugger_setinfo(debug, DBG_BREAK_INFO);
     
-    if (instr>=0) {
-        if (set) {
-            debugger_setbreakpoint(debug->debug, (instructionindx) instr);
-        } else {
-            debugger_clearbreakpoint(debug->debug, (instructionindx) instr);
-        }
-    }
+    morpho_freeobject(symbol);
+    morpho_freeobject(method);
     
-    return (instr>=0);
+    return success;
 }
 
 bool clidebugger_breakcommand(parser *p, void *out) {
@@ -553,4 +541,5 @@ void clidebugger_enter(vm *v) {
 void clidebugger_initialize(void) {
     morpho_defineerror(DBG_PRS, ERROR_PARSE, DBG_PRS_MSG);
     morpho_defineerror(DBG_INFO, ERROR_PARSE, DBG_INFO_MSG);
+    morpho_defineerror(DBG_EXPCTMTHD, ERROR_PARSE, DBG_EXPCTMTHD_MSG);
 }
