@@ -242,7 +242,8 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
     bool success=false;
     
     long instr=-1, line;
-    if (parse_checktokenadvance(p, DEBUGGER_ASTERISK) &&
+    if ((parse_checktokenadvance(p, DEBUGGER_ASTERISK) ||
+         parse_checktokenadvance(p, DEBUGGER_ADDRESS)) &&
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &instr)) {
         success=debugger_breakatinstruction(debug->debug, set, (instructionindx) instr);
