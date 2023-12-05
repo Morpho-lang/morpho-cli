@@ -20,6 +20,9 @@
 #define DBG_EXPCTMTHD                   "DbgExpctMthd"
 #define DBG_EXPCTMTHD_MSG               "Expected method label."
 
+#define DBG_INVLD                       "DbgInvld"
+#define DBG_INVLD_MSG                   "Invalid debugger command."
+
 #define DBG_INFO                        "DbgInfo"
 #define DBG_INFO_MSG                    "Invalid info command."
 

@@ -519,6 +519,12 @@ bool clidebugger_parse(clidebugger *debug, char *in) {
     
     bool success=parse(&p);
     
+    if (!success && morpho_matcherror(p.err, PARSE_EXPECTEXPRESSION)) {
+        error_clear(p.err); // Clear the error and replace with invalid command
+        parse_error(&p, true, DBG_INVLD);
+        clidebugger_setinfo(debug, DBG_HELP_INFO);
+    }
+    
     parse_clear(&p);
     lex_clear(&l);
     
@@ -564,5 +570,6 @@ void clidebugger_enter(vm *v) {
 void clidebugger_initialize(void) {
     morpho_defineerror(DBG_PRS, ERROR_PARSE, DBG_PRS_MSG);
     morpho_defineerror(DBG_INFO, ERROR_PARSE, DBG_INFO_MSG);
+    morpho_defineerror(DBG_INVLD, ERROR_PARSE, DBG_INVLD_MSG);
     morpho_defineerror(DBG_EXPCTMTHD, ERROR_PARSE, DBG_EXPCTMTHD_MSG);
 }
