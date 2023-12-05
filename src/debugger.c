@@ -506,6 +506,7 @@ void clidebugger_initializeparser(parser *p, lexer *l, error *err, void *out) {
     parse_init(p, l, err, out);
     parse_setbaseparsefn(p, clidebugger_parsecommand);
     parse_setparsetable(p, clidebugger_rules);
+    parse_setskipnewline(p, false, TOKEN_NONE);
 }
 
 /** Parses debugging commands */
