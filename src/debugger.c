@@ -262,7 +262,7 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
         parse_tokentointeger(p, &instr)) {
         success=debugger_breakatinstruction(debug->debug, set, (instructionindx) instr);
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
-               parse_tokentointeger(p, &instr)) {
+               parse_tokentointeger(p, &line)) {
         success=debugger_breakatline(debug->debug, set, NULL, (int) line);
     } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
         
