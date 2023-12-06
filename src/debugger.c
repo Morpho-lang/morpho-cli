@@ -303,10 +303,10 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
                parse_checkrequiredtoken(p, DEBUGGER_COLON, DBG_BRKFILE) &&
                parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &line)) {
-        success=debugger_breakatline(debug->debug, set, MORPHO_GETCSTRING(symbol), (int) line);
+        success=debugger_breakatline(debug->debug, set, symbol, (int) line);
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &line)) {
-        success=debugger_breakatline(debug->debug, set, NULL, (int) line);
+        success=debugger_breakatline(debug->debug, set, MORPHO_NIL, (int) line);
     } else if (clidebugger_parsesymbol(p, debug, &symbol)) {
         
         if (parse_checktokenadvance(p, DEBUGGER_DOT)) {
