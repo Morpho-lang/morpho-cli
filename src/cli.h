@@ -13,6 +13,8 @@
 #include "help.h"
 #include "common.h"
 
+#include "debugger.h"
+
 #define CLI_DEFAULTCOLOR LINEDIT_DEFAULTCOLOR
 #define CLI_ERRORCOLOR  LINEDIT_RED
 #define CLI_WARNINGCOLOR  LINEDIT_YELLOW
@@ -32,6 +34,12 @@
 #define CLI_PROFILE             (1<<5)
 
 typedef unsigned int clioptions;
+
+extern char *cli_globalsrc;
+
+void cli_displaywithstyle(lineditor *edit, linedit_color col, linedit_emphasis emph, int n, ...);
+void cli_reporterror(error *err, vm *v);
+
 
 void cli_run(const char *in, clioptions opt);
 void cli(clioptions opt);
