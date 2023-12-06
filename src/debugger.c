@@ -123,6 +123,8 @@ enum {
     DEBUGGER_ASTERISK,
     DEBUGGER_DOT,
     DEBUGGER_EQ,
+    DEBUGGER_COLON,
+    DEBUGGER_QUOTE,
     
     DEBUGGER_INTEGER,
     
@@ -146,15 +148,41 @@ enum {
     DEBUGGER_TRACE,
     
     DEBUGGER_SYMBOL,
+    DEBUGGER_STRING,
     
     DEBUGGER_EOF
 };
+
+/** @brief Lex strings
+ *  @param[in]  l    the lexer
+ *  @param[out] tok  token record to fill out
+ *  @param[out] err  error struct to fill out on errors
+ *  @returns true on success, false if an error occurs */
+bool clidebugger_lexstring(lexer *l, token *tok, error *err) {
+    while (lex_peek(l) != '"' && !lex_isatend(l)) {
+        lex_advance(l);
+    }
+    
+    if (lex_isatend(l)) {
+        /* Unterminated string */
+        morpho_writeerrorwithid(err, LEXER_UNTERMINATEDSTRING, l->line, l->posn);
+        lex_recordtoken(l, TOKEN_NONE, tok);
+        return false;
+    }
+    
+    lex_advance(l); /* Closing quote */
+    
+    lex_recordtoken(l, DEBUGGER_STRING, tok);
+    return true;
+}
 
 /** Debugger command tokens chosen to be largely compatible with GDB */
 tokendefn debuggertokens[] = {
     { "*",              DEBUGGER_ASTERISK         , NULL },
     { ".",              DEBUGGER_DOT              , NULL },
     { "=",              DEBUGGER_EQ               , NULL },
+    { ":",              DEBUGGER_COLON            , NULL },
+    { "\"",             DEBUGGER_QUOTE            , clidebugger_lexstring },
     
     { "address",        DEBUGGER_ADDRESS          , NULL },
     
@@ -233,6 +261,15 @@ bool clidebugger_iskeyword(tokentype type) {
     return (type>DEBUGGER_INTEGER && type<DEBUGGER_SYMBOL);
 }
 
+/** Extracts a string from a token */
+bool clidebugger_stringfromtoken(token *tok, value *out) {
+    if (tok->length<2) return false;
+    value str=object_stringfromcstring(tok->start+1, tok->length-2);
+    bool success=!MORPHO_ISNIL(str);
+    if (success) *out = str;
+    return success;
+}
+
 /** Parses the next token as a symbol, returning it as a string */
 bool clidebugger_parsesymbol(parser *p, clidebugger *debug, value *out) {
     bool success=false;
@@ -261,6 +298,12 @@ bool clidebugger_parsebreakpoint(parser *p, clidebugger *debug, bool set) {
         parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
         parse_tokentointeger(p, &instr)) {
         success=debugger_breakatinstruction(debug->debug, set, (instructionindx) instr);
+    } else if (parse_checktokenadvance(p, DEBUGGER_STRING) &&
+               clidebugger_stringfromtoken(&p->previous, &symbol) &&
+               parse_checkrequiredtoken(p, DEBUGGER_COLON, DBG_BRKFILE) &&
+               parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
+               parse_tokentointeger(p, &line)) {
+        success=debugger_breakatline(debug->debug, set, MORPHO_GETCSTRING(symbol), (int) line);
     } else if (parse_checktokenadvance(p, DEBUGGER_INTEGER) &&
                parse_tokentointeger(p, &line)) {
         success=debugger_breakatline(debug->debug, set, NULL, (int) line);
@@ -572,4 +615,5 @@ void clidebugger_initialize(void) {
     morpho_defineerror(DBG_INFO, ERROR_PARSE, DBG_INFO_MSG);
     morpho_defineerror(DBG_INVLD, ERROR_PARSE, DBG_INVLD_MSG);
     morpho_defineerror(DBG_EXPCTMTHD, ERROR_PARSE, DBG_EXPCTMTHD_MSG);
+    morpho_defineerror(DBG_BRKFILE, ERROR_PARSE, DBG_BRKFILE_MSG);
 }

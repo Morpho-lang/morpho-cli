@@ -26,6 +26,9 @@
 #define DBG_INFO                        "DbgInfo"
 #define DBG_INFO_MSG                    "Invalid info command."
 
+#define DBG_BRKFILE                     "DbgBrkFile"
+#define DBG_BRKFILE_MSG                 "Breakpoint specifier should be in form \"file\":line."
+
 #define DBG_HELP_INFO      "Available commands:\n" \
     "  [b]reakpoint, [c]ontinue, [d]isassemble, [g]arbage collect,\n" \
     "  [?]/[h]elp, [i]nfo, [l]ist, [p]rint, [q]uit, [s]tep, \n" \
@@ -40,9 +43,10 @@
     "  info stack    : Displays the stack.\n"
 
 #define DBG_BREAK_INFO     "Possible break commands (same syntax for clear): \n" \
-    "  break * n     : Break at instruction n.\n" \
-    "  break n       : Break at line n\n" \
-    "  break <symbol>: Break at a function or method.\n"
+    "  break * n          : Break at instruction n.\n" \
+    "  break n            : Break at line n.\n" \
+    "  break \"file\":n     : Break at line n in given file.\n" \
+    "  break <symbol>     : Break at a function or method.\n"
 
 #define DBG_SET_INFO     "Possible set commands: \n" \
     "  set register n = X : Sets register n to X.\n" \
