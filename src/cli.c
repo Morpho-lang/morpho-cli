@@ -330,7 +330,7 @@ void cli(clioptions opt) {
         
         /* Check for CLI commands. */
         /* Let the user quit by typing 'quit'. */
-        if (strncmp(input, CLI_QUIT, 4)==0 && white_space_remainder(input,4)) {
+        if (strncmp(input, CLI_QUIT, strlen(CLI_QUIT))==0) {
 			break;
         } else if (strncmp(input, CLI_HELP, strlen(CLI_HELP))==0) {
             cli_help(&edit, input+strlen(CLI_HELP), &err, help); continue;
