@@ -286,7 +286,7 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
             i=0;
         } else if (*s=='\n') { // Clear to end of line and return
             if (!linedit_write("\x1b[K\n\r")) return;
-            write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length);
+            if (write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length)==-1) return;
             i=0;
         } else if (*s=='\t') {
             if (!linedit_write(" ")) return;
@@ -299,7 +299,7 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
                 s=ctl;
             }
         } else { // Otherwise show printable characters that lie within the window
-            if (i>=l && i<r) write(STDOUT_FILENO, s, width);
+            if (i>=l && i<r) if (write(STDOUT_FILENO, s, width)==-1) return;
             i++;
         }
     }
