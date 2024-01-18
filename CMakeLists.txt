@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.13)
 project(morpho-cli)
 
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 add_executable(morpho6 "") 
 add_subdirectory(src)
 
