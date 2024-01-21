@@ -127,6 +127,7 @@ linedit_colormap cli_tokencolors[] = {
     { TOKEN_HASH,               LINEDIT_DEFAULTCOLOR },
     { TOKEN_AT,                 LINEDIT_DEFAULTCOLOR },
     
+    { TOKEN_QUOTE,              LINEDIT_DEFAULTCOLOR },
     { TOKEN_DOT,                LINEDIT_DEFAULTCOLOR },
     { TOKEN_DOTDOT,             LINEDIT_DEFAULTCOLOR },
     { TOKEN_DOTDOTDOT,          LINEDIT_DEFAULTCOLOR },
