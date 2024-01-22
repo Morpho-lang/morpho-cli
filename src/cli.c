@@ -45,7 +45,7 @@ void cli_reporterror(error *err, vm *v) {
         } else {
             if (err->line!=ERROR_POSNUNIDENTIFIABLE && err->posn!=ERROR_POSNUNIDENTIFIABLE) {
                 char posnbuffer[CLI_BUFFERSIZE];
-                snprintf(posnbuffer, CLI_BUFFERSIZE, " [line %u char %u", err->line, err->posn);
+                snprintf(posnbuffer, CLI_BUFFERSIZE, " [line %u char %u", err->line, err->posn+1);
                 linedit_displaywithstyle(&linedit, posnbuffer, CLI_ERRORCOLOR, CLI_NOEMPHASIS);
                 
                 if (err->module) {
