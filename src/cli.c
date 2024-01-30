@@ -387,6 +387,16 @@ void cli_run(const char *in, clioptions opt) {
     compiler *c = morpho_newcompiler(p);
     vm *v = morpho_newvm();
     
+    /* Set up line editor for output */
+    lineditor edit;
+    lexer l;
+    linedit_init(&edit);
+    linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
+
+    morpho_setprintfn(v, cli_printcallbackfn, &edit);
+    morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
+    morpho_setdebuggerfn(v, cli_debuggercallbackfn, NULL);
+    
     char *src = cli_loadsource(in);
     if (src) cli_globalsrc = src;
     
@@ -426,6 +436,8 @@ void cli_run(const char *in, clioptions opt) {
     } else {
         printf("Could not open file '%s'.\n", in);
     }
+    
+    linedit_clear(&edit);
     
     MORPHO_FREE(src);
     morpho_freevm(v);
