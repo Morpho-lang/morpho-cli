@@ -95,6 +95,8 @@ linedit_terminaltype linedit_checksupport(void) {
     char *unsupported[]={"dumb","cons25","emacs",NULL};
     char *term = getenv("TERM");
     
+    printf("Terminal id: '%s'\n", (term ? term : "null"));
+    
     if (term == NULL) return LINEDIT_UNSUPPORTED;
     for (unsigned int i=0; unsupported[i]!=NULL; i++) {
         if (!linedit_cstrcasecmp(term, unsupported[i])) return LINEDIT_UNSUPPORTED;
@@ -1319,6 +1321,38 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
+    char *txt = "🦋👩‍🔬👩‍❤️‍👩m👋‱௸௵ဪ𐌀𐌁🏈";
+    int width[100], xx0[100], xx1[100], nchars[100];
+    
+    int k=0;
+    for (size_t i=0, len; txt[i]!='\0'; i+=len, k++) {
+        len = edit->graphemefn(txt+i, SIZE_MAX);
+        
+        nchars[k]=len;
+        
+        char str[len+1];
+        strncpy(str, txt+i, len);
+        str[len]='\0';
+        
+        int x0, x1;
+        linedit_home();
+        linedit_getcursorposition(&x0, NULL);
+        linedit_write(str);
+        linedit_getcursorposition(&x1, NULL);
+        xx0[k]=x0;
+        xx1[k]=x1;
+        width[k]=x1-x0;
+        
+        linedit_write("\n");
+    }
+    
+    for (int i=0; i<k; i++) {
+        char out[100];
+        linedit_home();
+        sprintf(out, "%i %i (%i, %i)\n",nchars[i], width[i], xx0[i], xx1[i]);
+        linedit_write(out);
+    }
+    
     int vpos=0, nlines=0; // Keep track of the current vertical position and line number
 
     while (linedit_processkeypress(edit)) {
@@ -1369,7 +1403,7 @@ void linedit_init(lineditor *edit) {
     edit->cref=NULL;
     edit->multiline=NULL;
     edit->mlref=NULL;
-    edit->graphemefn=NULL; 
+    edit->graphemefn=NULL;
 }
 
 /** Finalize a line editor */
@@ -1393,7 +1427,7 @@ void linedit_clear(lineditor *edit) {
  *  @returns the string input by the user, or NULL if nothing entered. */
 char *linedit(lineditor *edit) {
     if (!edit) return NULL; /** Ensure we are not passed a NULL pointer */
-    
+
     linedit_stringclear(&edit->current);
     
     switch (linedit_checksupport()) {
