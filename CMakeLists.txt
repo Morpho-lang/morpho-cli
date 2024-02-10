@@ -35,7 +35,25 @@ endforeach()
 find_library(MORPHO_LIBRARY
     NAMES morpho libmorpho
 )
-target_link_libraries(morpho6 ${MORPHO_LIBRARY})
+
+# Locate libgrapheme
+find_library(GRAPHEME_LIBRARY
+    NAMES grapheme libgrapheme
+)
+
+# Find grapheme.h header file 
+find_file(GRAPHEME_HEADER grapheme.h 
+          HINTS 
+            /usr/local/include
+            /opt/homebrew/include/)
+
+# Identify folder that grapheme.h is located in from GRAPHEME_HEADER and store in GRAPHEME_INCLUDE
+get_filename_component(GRAPHEME_INCLUDE ${GRAPHEME_HEADER} DIRECTORY)
+
+# Add grapheme headers to MORPHO_INCLUDE
+target_include_directories(morpho6 PUBLIC ${GRAPHEME_INCLUDE})
+
+target_link_libraries(morpho6 ${MORPHO_LIBRARY} ${GRAPHEME_LIBRARY})
 
 # Install the resulting binary
 install(TARGETS morpho6)

@@ -148,6 +148,18 @@ typedef bool (*linedit_completefn) (char *in, void *ref, linedit_stringlist *com
 typedef bool (*linedit_multilinefn) (char *in, void *ref);
 
 /* -----------------------
+ * Unicode support
+ * ----------------------- */
+
+/** @brief Unicode grapheme splitter
+ *  @param[in]  in          - a string
+ *  @param[in]  maxlength - maximum length of the grapheme [set to SIZE_MAX]
+ *  @returns offset to next grapheme
+ *  @details If provided, linedit will use this function to split UTF8 code into graphemes, which enables length estimation.
+*/
+typedef size_t (*linedit_graphemefn) (char *in, size_t maxlength);
+
+/* -----------------------
  * lineditor structure
  * ----------------------- */
 
@@ -182,6 +194,8 @@ typedef struct {
     
     linedit_multilinefn multiline; /** Multiline callback */
     void *mlref;                   /** Reference for multiline callback function */
+    
+    linedit_graphemefn graphemefn; /** Grapheme splitting */
 } lineditor;
 
 /* **********************************************************************
@@ -222,6 +236,11 @@ void linedit_addsuggestion(linedit_stringlist *completion, char *string);
  *  @param[in] edit           Line editor to configure
  *  @param[in] prompt       Prompt string to use */
 void linedit_setprompt(lineditor *edit, char *prompt);
+
+/** @brief Sets the grapheme splitter to use
+ *  @param[in] edit           Line editor to configure
+ *  @param[in] graphemefn       Grapheme splitter to use */
+void linedit_setgraphemesplitter(lineditor *edit, linedit_graphemefn graphemefn);
 
 /** @brief Displays a string with a given color and emphasis
  *  @param[in] edit           Line editor to use

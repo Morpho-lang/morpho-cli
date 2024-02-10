@@ -1369,6 +1369,7 @@ void linedit_init(lineditor *edit) {
     edit->cref=NULL;
     edit->multiline=NULL;
     edit->mlref=NULL;
+    edit->graphemefn=NULL; 
 }
 
 /** Finalize a line editor */
@@ -1472,6 +1473,14 @@ void linedit_setprompt(lineditor *edit, char *prompt) {
     if (!edit) return;
     linedit_stringclear(&edit->prompt);
     linedit_stringaddcstring(&edit->prompt, prompt);
+}
+
+/** @brief Sets the grapheme splitter to use
+ *  @param[in] edit           Line editor to configure
+ *  @param[in] graphemefn       Grapheme splitter to use */
+void linedit_setgraphemesplitter(lineditor *edit, linedit_graphemefn graphemefn) {
+    if (!edit) return;
+    edit->graphemefn=graphemefn;
 }
 
 /** @brief Displays a string with a given color and emphasis
