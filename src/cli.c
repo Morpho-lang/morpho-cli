@@ -11,6 +11,8 @@
 #include "parse.h"
 #include "file.h"
 
+#include <grapheme.h>
+
 char *cli_globalsrc=NULL;
 
 #define CLI_BUFFERSIZE 1024
@@ -311,6 +313,7 @@ void cli(clioptions opt) {
     linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
     linedit_multiline(&edit, cli_multiline, NULL, CLI_CONTINUATIONPROMPT);
     linedit_autocomplete(&edit, cli_complete, NULL);
+    linedit_setgraphemesplitter(&edit, grapheme_next_character_break_utf8);
 
     morpho_setprintfn(v, cli_printcallbackfn, &edit);
     morpho_setwarningfn(v, cli_warningcallbackfn, &edit);

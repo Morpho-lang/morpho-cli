@@ -157,7 +157,7 @@ typedef bool (*linedit_multilinefn) (char *in, void *ref);
  *  @returns offset to next grapheme
  *  @details If provided, linedit will use this function to split UTF8 code into graphemes, which enables length estimation.
 */
-typedef size_t (*linedit_graphemefn) (char *in, size_t maxlength);
+typedef size_t (*linedit_graphemefn) (const char *in, size_t maxlength);
 
 /* -----------------------
  * lineditor structure
