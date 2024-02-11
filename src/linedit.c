@@ -271,7 +271,7 @@ void linedit_disablerawmode(void) {
  * Get cursor position and width
  * ---------------------------------------- */
 
-#define LINEDIT_CURSORPOSN_BUFFERSIZE 32
+#define LINEDIT_CURSORPOSN_BUFFERSIZE 128
 /** @brief Gets the cursor position */
 bool linedit_getcursorposition(int *x, int *y) {
     char answer[LINEDIT_CURSORPOSN_BUFFERSIZE];
@@ -404,16 +404,13 @@ bool linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, int length, i
 
 /** @brief Renders a grapheme sequence, measuring its display width */
 bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, int length, int *width) {
-    int x0, x1, w;
+    int x0=0, x1=0, w=0;
     linedit_getcursorposition(&x0, NULL);
-    if (write(STDOUT_FILENO, grapheme, length)==-1) {
-        fprintf(stderr, "Error writing to terminal.\n");
-        return false;
-    }
+    write(STDOUT_FILENO, grapheme, length);
     linedit_getcursorposition(&x1, NULL);
-    *width = x1-x0;
-    
-    return linedit_graphemeinsert(&edit->graphemedict, grapheme, length, *width);
+    w=(x1>x0 ? x1-x0 : 1);
+    *width = w;
+    return linedit_graphemeinsert(&edit->graphemedict, grapheme, length, w);
 }
 
 /** @brief Renders a string, showing only characters in columns l...r */
@@ -443,13 +440,13 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
                 s=ctl;
             }
         } else { // Otherwise show printable characters that lie within the window
-            int width;
+            int width=1;
             if (!linedit_graphemedisplaywidth(edit, s, length, &width)) {
                 linedit_graphememeasurewidth(edit, s, length, &width);
             } else if (i>=l && i<r) {
                 if (write(STDOUT_FILENO, s, length)==-1) return;
             }
-            i+=width;
+            i+=1;
         }
     }
 }
