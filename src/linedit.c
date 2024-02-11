@@ -56,24 +56,13 @@ bool linedit_utf8next(char *c, int *i) {
  * Grapheme width dictionary
  * ********************************************************************** */
 
-typedef struct {
-    char *grapheme;
-    int width;
-} graphemeentry;
-
-typedef struct {
-    int count;
-    int capacity;
-    graphemeentry *contents;
-} graphemedictionary;
-
-void linedit_graphemeinit(graphemedictionary *dict) {
+void linedit_graphemeinit(linedit_graphemedictionary *dict) {
     dict->count=0;
     dict->capacity=0;
     dict->contents=NULL;
 }
 
-void linedit_graphemeclear(graphemedictionary *dict) {
+void linedit_graphemeclear(linedit_graphemedictionary *dict) {
     for (int i=0; i<dict->capacity; i++) {
         if (dict->contents[i].grapheme) free(dict->contents[i].grapheme);
     }
@@ -91,10 +80,10 @@ uint32_t linedit_hashstring(const char* key, size_t length) {
     return hash;
 }
 
-void linedit_graphemeinsert(graphemedictionary *dict, char *grapheme, size_t length, int width);
+void linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width);
 
-bool linedit_graphemeresize(graphemedictionary *dict, int size) {
-    graphemeentry *new=malloc(size*sizeof(graphemeentry)), *old=dict->contents;
+bool linedit_graphemeresize(linedit_graphemedictionary *dict, int size) {
+    linedit_graphemeentry *new=malloc(size*sizeof(linedit_graphemeentry)), *old=dict->contents;
     int osize=dict->capacity;
 
     if (new) { // Clear the newly allocated structure
@@ -116,7 +105,7 @@ bool linedit_graphemeresize(graphemedictionary *dict, int size) {
     return true;
 }
 
-bool linedit_graphemefind(graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
+bool linedit_graphemefind(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
     uint32_t hash = linedit_hashstring(grapheme, length);
     
     int start = hash % dict->capacity;
@@ -143,7 +132,7 @@ bool linedit_graphemefind(graphemedictionary *dict, char *grapheme, size_t lengt
 #define LINEDIT_SIZEINCREASETHRESHOLD(x) (((x)>>1) + ((x)>>2))
 #define LINEDIT_INCREASEDICTIONARYSIZE(x) (2*x)
 
-void linedit_graphemeinsert(graphemedictionary *dict, char *grapheme, size_t length, int width) {
+void linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width) {
     
     if (!dict->contents) {
         linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE);
@@ -161,7 +150,7 @@ void linedit_graphemeinsert(graphemedictionary *dict, char *grapheme, size_t len
     dict->count++;
 }
 
-void linedit_graphemeshow(graphemedictionary *dict) {
+void linedit_graphemeshow(linedit_graphemedictionary *dict) {
     for (int i=0; i<dict->capacity; i++) {
         if (dict->contents[i].grapheme) {
             printf("%s: %i\n", dict->contents[i].grapheme, dict->contents[i].width);
@@ -390,14 +379,24 @@ bool linedit_moveup(int n) {
      return true;
 }
 
+int linedit_graphemelength(lineditor *edit, char *str) {
+    if (edit->graphemefn) return edit->graphemefn(str, SIZE_MAX);
+    return linedit_utf8numberofbytes(str); // Fallback on displaying unicode chars one by one
+}
+
+int linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, int length) {
+    return 0;
+}
+
 /** @brief Renders a string, showing only characters in columns l...r */
 void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
     int i=0;
-    int width=0;
+    int length=0;
     
-    for (char *s=string; *s!='\0'; s+=width) {
-        width=linedit_utf8numberofbytes(s);
-        if (width==0) break;
+    for (char *s=string; *s!='\0'; s+=length) {
+        length = linedit_graphemelength(edit, s);
+        
+        if (length==0) break;
         if (*s=='\r') { // Reset on a carriage return
             if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
             i=0;
@@ -416,7 +415,7 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
                 s=ctl;
             }
         } else { // Otherwise show printable characters that lie within the window
-            if (i>=l && i<r) if (write(STDOUT_FILENO, s, width)==-1) return;
+            if (i>=l && i<r) if (write(STDOUT_FILENO, s, length)==-1) return;
             i++;
         }
     }
@@ -1521,6 +1520,7 @@ void linedit_init(lineditor *edit) {
     edit->multiline=NULL;
     edit->mlref=NULL;
     edit->graphemefn=NULL;
+    linedit_graphemeinit(&edit->graphemedict);
 }
 
 /** Finalize a line editor */
@@ -1536,6 +1536,7 @@ void linedit_clear(lineditor *edit) {
     linedit_stringclear(&edit->prompt);
     linedit_stringclear(&edit->cprompt);
     linedit_stringclear(&edit->clipboard);
+    linedit_graphemeclear(&edit->graphemedict);
 }
 
 
@@ -1552,6 +1553,8 @@ char *linedit(lineditor *edit) {
         case LINEDIT_UNSUPPORTED: linedit_unsupported(edit); break;
         case LINEDIT_SUPPORTED: linedit_supported(edit); break;
     }
+    
+    linedit_graphemeshow(&edit->graphemedict);
     
     return linedit_cstring(&edit->current);
 }

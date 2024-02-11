@@ -148,8 +148,21 @@ typedef bool (*linedit_completefn) (char *in, void *ref, linedit_stringlist *com
 typedef bool (*linedit_multilinefn) (char *in, void *ref);
 
 /* -----------------------
- * Unicode support
+ * Unicode grapheme support
  * ----------------------- */
+
+/** Grapheme dictionary entry */
+typedef struct {
+    char *grapheme;
+    int width;
+} linedit_graphemeentry;
+
+/** Grapheme dictionary */
+typedef struct {
+    int count;
+    int capacity;
+    linedit_graphemeentry *contents;
+} linedit_graphemedictionary;
 
 /** @brief Unicode grapheme splitter
  *  @param[in]  in          - a string
@@ -196,6 +209,7 @@ typedef struct {
     void *mlref;                   /** Reference for multiline callback function */
     
     linedit_graphemefn graphemefn; /** Grapheme splitting */
+    linedit_graphemedictionary graphemedict; /** Grapheme dictionary */
 } lineditor;
 
 /* **********************************************************************
