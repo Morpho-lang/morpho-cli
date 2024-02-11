@@ -53,6 +53,123 @@ bool linedit_utf8next(char *c, int *i) {
 }
 
 /* **********************************************************************
+ * Grapheme width dictionary
+ * ********************************************************************** */
+
+typedef struct {
+    char *grapheme;
+    int width;
+} graphemeentry;
+
+typedef struct {
+    int count;
+    int capacity;
+    graphemeentry *contents;
+} graphemedictionary;
+
+void linedit_graphemeinit(graphemedictionary *dict) {
+    dict->count=0;
+    dict->capacity=0;
+    dict->contents=NULL;
+}
+
+void linedit_graphemeclear(graphemedictionary *dict) {
+    for (int i=0; i<dict->capacity; i++) {
+        if (dict->contents[i].grapheme) free(dict->contents[i].grapheme);
+    }
+    linedit_graphemeinit(dict);
+}
+
+uint32_t linedit_hashstring(const char* key, size_t length) {
+    uint32_t hash = 2166136261u; // String hashing function FNV-1a
+
+    for (unsigned int i=0; i < length; i++) {
+        hash ^= key[i];
+        hash *= 16777619u; // FNV prime number for 32 bits
+    }
+    
+    return hash;
+}
+
+void linedit_graphemeinsert(graphemedictionary *dict, char *grapheme, size_t length, int width);
+
+bool linedit_graphemeresize(graphemedictionary *dict, int size) {
+    graphemeentry *new=malloc(size*sizeof(graphemeentry)), *old=dict->contents;
+    int osize=dict->capacity;
+
+    if (new) { // Clear the newly allocated structure
+        for (unsigned int i=0; i<size; i++) {
+            new[i].grapheme = NULL;
+            new[i].width = 0;
+        }
+    } else return false;
+    
+    dict->capacity=size;
+    dict->contents=new;
+    dict->count=0;
+    
+    if (old) { // Copy old contents across
+        for (unsigned int i=0; i<osize; i++) {
+            if (old[i].grapheme) linedit_graphemeinsert(dict, old[i].grapheme, strlen(old[i].grapheme), old[i].width);
+        }
+    }
+    return true;
+}
+
+bool linedit_graphemefind(graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
+    uint32_t hash = linedit_hashstring(grapheme, length);
+    
+    int start = hash % dict->capacity;
+    int i=start;
+    
+    do {
+        if (!dict->contents[i].grapheme) { // Blank entry -> not found
+            if (posn) *posn = i;
+            return false;
+        }
+        
+        if (strncmp(grapheme, dict->contents[i].grapheme, length)==0) { // Found
+            if (posn) *posn = i;
+            return true;
+        }
+        
+        i = (i+1) % dict->capacity;
+    } while (i!=start); // Loop terminates once we return to the starting position
+    
+    return false;
+}
+
+#define LINEDIT_MINDICTIONARYSIZE 8
+#define LINEDIT_SIZEINCREASETHRESHOLD(x) (((x)>>1) + ((x)>>2))
+#define LINEDIT_INCREASEDICTIONARYSIZE(x) (2*x)
+
+void linedit_graphemeinsert(graphemedictionary *dict, char *grapheme, size_t length, int width) {
+    
+    if (!dict->contents) {
+        linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE);
+    } else if (dict->count+1 > LINEDIT_SIZEINCREASETHRESHOLD(dict->capacity)) {
+        linedit_graphemeresize(dict, LINEDIT_INCREASEDICTIONARYSIZE(dict->capacity));
+    }
+    
+    int posn;
+    if (linedit_graphemefind(dict, grapheme, length, &posn)) return;
+    
+    char *label = strndup(grapheme, length);
+    if (!label) return;
+    dict->contents[posn].grapheme=label;
+    dict->contents[posn].width=width;
+    dict->count++;
+}
+
+void linedit_graphemeshow(graphemedictionary *dict) {
+    for (int i=0; i<dict->capacity; i++) {
+        if (dict->contents[i].grapheme) {
+            printf("%s: %i\n", dict->contents[i].grapheme, dict->contents[i].width);
+        }
+    }
+}
+
+/* **********************************************************************
  * Terminal
  * ********************************************************************** */
 
@@ -94,8 +211,6 @@ linedit_terminaltype linedit_checksupport(void) {
      
     char *unsupported[]={"dumb","cons25","emacs",NULL};
     char *term = getenv("TERM");
-    
-    printf("Terminal id: '%s'\n", (term ? term : "null"));
     
     if (term == NULL) return LINEDIT_UNSUPPORTED;
     for (unsigned int i=0; unsupported[i]!=NULL; i++) {
@@ -1321,7 +1436,8 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
-    char *txt = "🦋👩‍🔬👩‍❤️‍👩m👋‱௸௵ဪ𐌀𐌁🏈";
+    /*
+    char *txt = "🦋👩‍🔬👩‍❤️‍👩mà👋‱௸௵ဪ𐌀𐌁🏈🧼🐻🚿";
     int width[100], xx0[100], xx1[100], nchars[100];
     
     int k=0;
@@ -1342,6 +1458,7 @@ void linedit_supported(lineditor *edit) {
         xx0[k]=x0;
         xx1[k]=x1;
         width[k]=x1-x0;
+        linedit_write("X");
         
         linedit_write("\n");
     }
@@ -1351,7 +1468,7 @@ void linedit_supported(lineditor *edit) {
         linedit_home();
         sprintf(out, "%i %i (%i, %i)\n",nchars[i], width[i], xx0[i], xx1[i]);
         linedit_write(out);
-    }
+    } */
     
     int vpos=0, nlines=0; // Keep track of the current vertical position and line number
 
@@ -1427,7 +1544,7 @@ void linedit_clear(lineditor *edit) {
  *  @returns the string input by the user, or NULL if nothing entered. */
 char *linedit(lineditor *edit) {
     if (!edit) return NULL; /** Ensure we are not passed a NULL pointer */
-
+    
     linedit_stringclear(&edit->current);
     
     switch (linedit_checksupport()) {
