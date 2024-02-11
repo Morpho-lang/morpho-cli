@@ -80,7 +80,7 @@ uint32_t linedit_hashstring(const char* key, size_t length) {
     return hash;
 }
 
-void linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width);
+bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width);
 
 bool linedit_graphemeresize(linedit_graphemedictionary *dict, int size) {
     linedit_graphemeentry *new=malloc(size*sizeof(linedit_graphemeentry)), *old=dict->contents;
@@ -99,13 +99,14 @@ bool linedit_graphemeresize(linedit_graphemedictionary *dict, int size) {
     
     if (old) { // Copy old contents across
         for (unsigned int i=0; i<osize; i++) {
-            if (old[i].grapheme) linedit_graphemeinsert(dict, old[i].grapheme, strlen(old[i].grapheme), old[i].width);
+            if (old[i].grapheme) if (!linedit_graphemeinsert(dict, old[i].grapheme, strlen(old[i].grapheme), old[i].width)) return false;
         }
     }
     return true;
 }
 
 bool linedit_graphemefind(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
+    if (!dict->contents) return false;
     uint32_t hash = linedit_hashstring(grapheme, length);
     
     int start = hash % dict->capacity;
@@ -132,22 +133,31 @@ bool linedit_graphemefind(linedit_graphemedictionary *dict, char *grapheme, size
 #define LINEDIT_SIZEINCREASETHRESHOLD(x) (((x)>>1) + ((x)>>2))
 #define LINEDIT_INCREASEDICTIONARYSIZE(x) (2*x)
 
-void linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width) {
+bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width) {
     
     if (!dict->contents) {
-        linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE);
+        if (!linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE)) return false;
     } else if (dict->count+1 > LINEDIT_SIZEINCREASETHRESHOLD(dict->capacity)) {
-        linedit_graphemeresize(dict, LINEDIT_INCREASEDICTIONARYSIZE(dict->capacity));
+        if (!linedit_graphemeresize(dict, LINEDIT_INCREASEDICTIONARYSIZE(dict->capacity))) return false;
     }
     
     int posn;
-    if (linedit_graphemefind(dict, grapheme, length, &posn)) return;
+    if (linedit_graphemefind(dict, grapheme, length, &posn)) return true;
     
     char *label = strndup(grapheme, length);
-    if (!label) return;
+    if (!label) return false;
     dict->contents[posn].grapheme=label;
     dict->contents[posn].width=width;
     dict->count++;
+    return true;
+}
+
+bool linedit_graphemelookup(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *width) {
+    if (!dict->contents) return false;
+    int posn;
+    if (!linedit_graphemefind(dict, grapheme, length, &posn)) return false;
+    if (width) *width = dict->contents[posn].width;
+    return true;
 }
 
 void linedit_graphemeshow(linedit_graphemedictionary *dict) {
@@ -379,13 +389,31 @@ bool linedit_moveup(int n) {
      return true;
 }
 
+/** @brief Identifies the current grapheme length */
 int linedit_graphemelength(lineditor *edit, char *str) {
     if (edit->graphemefn) return edit->graphemefn(str, SIZE_MAX);
     return linedit_utf8numberofbytes(str); // Fallback on displaying unicode chars one by one
 }
 
-int linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, int length) {
-    return 0;
+/** @brief Returns the display with of a grapheme sequence if known */
+bool linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, int length, int *width) {
+    if (length==1) return 1;
+    
+    return linedit_graphemelookup(&edit->graphemedict, grapheme, length, width);
+}
+
+/** @brief Renders a grapheme sequence, measuring its display width */
+bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, int length, int *width) {
+    int x0, x1, w;
+    linedit_getcursorposition(&x0, NULL);
+    if (write(STDOUT_FILENO, grapheme, length)==-1) {
+        fprintf(stderr, "Error writing to terminal.\n");
+        return false;
+    }
+    linedit_getcursorposition(&x1, NULL);
+    *width = x1-x0;
+    
+    return linedit_graphemeinsert(&edit->graphemedict, grapheme, length, *width);
 }
 
 /** @brief Renders a string, showing only characters in columns l...r */
@@ -415,8 +443,13 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
                 s=ctl;
             }
         } else { // Otherwise show printable characters that lie within the window
-            if (i>=l && i<r) if (write(STDOUT_FILENO, s, length)==-1) return;
-            i++;
+            int width;
+            if (!linedit_graphemedisplaywidth(edit, s, length, &width)) {
+                linedit_graphememeasurewidth(edit, s, length, &width);
+            } else if (i>=l && i<r) {
+                if (write(STDOUT_FILENO, s, length)==-1) return;
+            }
+            i+=width;
         }
     }
 }
