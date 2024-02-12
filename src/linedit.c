@@ -312,6 +312,21 @@ void linedit_getterminalwidth(lineditor *edit) {
 }
 
 /* ----------------------------------------
+ * Detect if keypresses are available
+ * ---------------------------------------- */
+
+/** Detect if a keypress is available; non-blocking */
+bool linedit_keypressavailable(void) {
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+    
+    struct timeval timeout={ .tv_sec=0, .tv_usec=0 };
+    
+    return (select(1, &readfds, NULL, NULL, &timeout)>0);
+}
+
+/* ----------------------------------------
  * Output
  * ---------------------------------------- */
 
@@ -1275,150 +1290,152 @@ bool linedit_processkeypress(lineditor *edit) {
     
     linedit_keypressinit(&key);
     
-    if (linedit_readkey(edit, &key)) {
-        switch (key.type) {
-            case CHARACTER:
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                linedit_stringinsert(&edit->current, edit->posn, key.c, key.nbytes);
-                linedit_advanceposition(edit, 1);
-                break;
-            case DELETE:
-                if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
-                    /* Delete the selection */
-                    int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
-                    int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
-                    linedit_stringdelete(&edit->current, lposn, rposn-lposn);
-                    edit->posn=lposn;
-                } else {
-                    /* Delete a character */
-                    if (edit->posn>0) {
-                        linedit_stringdelete(&edit->current, edit->posn-1, 1);
-                        linedit_advanceposition(edit, -1);
+    do {
+        if (linedit_readkey(edit, &key)) {
+            switch (key.type) {
+                case CHARACTER:
+                    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                    linedit_stringinsert(&edit->current, edit->posn, key.c, key.nbytes);
+                    linedit_advanceposition(edit, 1);
+                    break;
+                case DELETE:
+                    if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
+                        /* Delete the selection */
+                        int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
+                        int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
+                        linedit_stringdelete(&edit->current, lposn, rposn-lposn);
+                        edit->posn=lposn;
+                    } else {
+                        /* Delete a character */
+                        if (edit->posn>0) {
+                            linedit_stringdelete(&edit->current, edit->posn-1, 1);
+                            linedit_advanceposition(edit, -1);
+                        }
                     }
-                }
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                break;
-            case LEFT:
-                linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
-                break;
-            case RIGHT:
-                linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
-                break;
-            case SHIFT_LEFT:
-                linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, -1);
-                break;
-            case SHIFT_RIGHT:
-                linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, +1);
-                break;
-            case UP:
-            {
-                if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
-                    linedit_setmode(edit, LINEDIT_HISTORYMODE);
-                    linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
-                }
-                
-                linedit_historyadvance(edit, 1);
-                linedit_setposition(edit, -1);
-            }
-                break;
-            case DOWN:
-                if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
-                    linedit_historyadvance(edit, -1);
+                    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                    break;
+                case LEFT:
+                    linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
+                    break;
+                case RIGHT:
+                    linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
+                    break;
+                case SHIFT_LEFT:
+                    linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, -1);
+                    break;
+                case SHIFT_RIGHT:
+                    linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, +1);
+                    break;
+                case UP:
+                {
+                    if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
+                        linedit_setmode(edit, LINEDIT_HISTORYMODE);
+                        linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
+                    }
+                    
+                    linedit_historyadvance(edit, 1);
                     linedit_setposition(edit, -1);
-                } else if (linedit_aresuggestionsavailable(edit)) {
-                    linedit_advancesuggestions(edit, 1);
-                    regeneratesuggestions=false;
                 }
-                break;
-            case RETURN:
-                if (linedit_shouldmultiline(edit)) {
-                    linedit_stringaddcstring(&edit->current, "\n");
-                    linedit_advanceposition(edit, +1);
-                } else return false;
-                break; 
-            case TAB:
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                /* If suggestions are available (i.e. we're at the end of the line)... */
-                if (linedit_aresuggestionsavailable(edit)) {
-                    char *sugg = linedit_currentsuggestion(edit);
-                    if (sugg) {
-                        linedit_stringaddcstring(&edit->current, sugg);
-                        linedit_movetoend(edit);
+                    break;
+                case DOWN:
+                    if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
+                        linedit_historyadvance(edit, -1);
+                        linedit_setposition(edit, -1);
+                    } else if (linedit_aresuggestionsavailable(edit)) {
+                        linedit_advancesuggestions(edit, 1);
+                        regeneratesuggestions=false;
                     }
-                } else { // Otherwise simply add a tab character
-                    linedit_stringinsert(&edit->current, edit->posn, "\t", 1);
-                    linedit_advanceposition(edit, +1);
-                }
-                break;
-            case CTRL: /* Handle ctrl+letter combos */
-                switch(LINEDIT_KEYPRESSGETCHAR(&key)) {
-                    case 'A': /* Move to start of line */
-                    {
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        
-                        int line;
-                        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
-                        linedit_stringfindposition(&edit->current, 0, line, &edit->posn);
-                    }
-                        break;
-                    case 'B': /* Move backward */
-                        linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
-                        break;
-                    case 'C': /* Copy */
-                        if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
-                            int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
-                            int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
-                            size_t lindx, rindx;
-                            if (!linedit_stringutf8index(&edit->current, lposn, 0, &lindx)) break;
-                            if (!linedit_stringutf8index(&edit->current, rposn, 0, &rindx)) break;
-                            linedit_stringclear(&edit->clipboard);
-                            linedit_stringappend(&edit->clipboard, edit->current.string+lindx, (size_t) rindx-lindx);
+                    break;
+                case RETURN:
+                    if (linedit_shouldmultiline(edit)) {
+                        linedit_stringaddcstring(&edit->current, "\n");
+                        linedit_advanceposition(edit, +1);
+                    } else return false;
+                    break;
+                case TAB:
+                    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                    /* If suggestions are available (i.e. we're at the end of the line)... */
+                    if (linedit_aresuggestionsavailable(edit)) {
+                        char *sugg = linedit_currentsuggestion(edit);
+                        if (sugg) {
+                            linedit_stringaddcstring(&edit->current, sugg);
+                            linedit_movetoend(edit);
                         }
-                        break;
-                    case 'D': /* Delete the character underneath the cursor */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_stringdelete(&edit->current, edit->posn, 1);
-                        break;
-                    case 'E': { /* Move to end of line */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        int line;
-                        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
-                        linedit_stringfindposition(&edit->current, -1, line, &edit->posn);
+                    } else { // Otherwise simply add a tab character
+                        linedit_stringinsert(&edit->current, edit->posn, "\t", 1);
+                        linedit_advanceposition(edit, +1);
                     }
-                        break;
-                    case 'F': /* Move forward */
-                        linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
-                        break;
-                    case 'G': { /* Abort current editing session */
-                        linedit_stringclear(&edit->current);
-                        edit->posn=0;
-                        return false;
-                    }
-                    case 'L': /* Clear buffer */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_stringclear(&edit->current);
-                        edit->posn=0;
-                        break;
-                    case 'N': /* Next line */
-                        linedit_processchangeline(edit, 1);
-                        break;
-                    case 'P': /* Previous line */
-                        linedit_processchangeline(edit, -1);
-                        break;
-                    case 'V': /* Paste */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        if (edit->clipboard.length>0) {
-                            linedit_stringinsert(&edit->current, edit->posn, edit->clipboard.string, edit->clipboard.length);
-                            linedit_advanceposition(edit, linedit_stringwidth(&edit->clipboard));
+                    break;
+                case CTRL: /* Handle ctrl+letter combos */
+                    switch(LINEDIT_KEYPRESSGETCHAR(&key)) {
+                        case 'A': /* Move to start of line */
+                        {
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            
+                            int line;
+                            linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
+                            linedit_stringfindposition(&edit->current, 0, line, &edit->posn);
                         }
-                        break;
-                    default: break;
-                }
-                break;
-            default:
-                break;
+                            break;
+                        case 'B': /* Move backward */
+                            linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
+                            break;
+                        case 'C': /* Copy */
+                            if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
+                                int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
+                                int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
+                                size_t lindx, rindx;
+                                if (!linedit_stringutf8index(&edit->current, lposn, 0, &lindx)) break;
+                                if (!linedit_stringutf8index(&edit->current, rposn, 0, &rindx)) break;
+                                linedit_stringclear(&edit->clipboard);
+                                linedit_stringappend(&edit->clipboard, edit->current.string+lindx, (size_t) rindx-lindx);
+                            }
+                            break;
+                        case 'D': /* Delete the character underneath the cursor */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            linedit_stringdelete(&edit->current, edit->posn, 1);
+                            break;
+                        case 'E': { /* Move to end of line */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            int line;
+                            linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
+                            linedit_stringfindposition(&edit->current, -1, line, &edit->posn);
+                        }
+                            break;
+                        case 'F': /* Move forward */
+                            linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
+                            break;
+                        case 'G': { /* Abort current editing session */
+                            linedit_stringclear(&edit->current);
+                            edit->posn=0;
+                            return false;
+                        }
+                        case 'L': /* Clear buffer */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            linedit_stringclear(&edit->current);
+                            edit->posn=0;
+                            break;
+                        case 'N': /* Next line */
+                            linedit_processchangeline(edit, 1);
+                            break;
+                        case 'P': /* Previous line */
+                            linedit_processchangeline(edit, -1);
+                            break;
+                        case 'V': /* Paste */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            if (edit->clipboard.length>0) {
+                                linedit_stringinsert(&edit->current, edit->posn, edit->clipboard.string, edit->clipboard.length);
+                                linedit_advanceposition(edit, linedit_stringwidth(&edit->clipboard));
+                            }
+                            break;
+                        default: break;
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
-    }
+    } while (linedit_keypressavailable());
     
     if (regeneratesuggestions) linedit_generatesuggestions(edit);
     
