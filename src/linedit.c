@@ -635,8 +635,8 @@ int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
     return width;
 }
 
-/** Finds the column position for a given grapheme in a string */
-int linedit_stringfindcolumn(lineditor *edit, linedit_string *string, int posn) {
+/** Finds the display coordinates for a given position in a string */
+void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, int posn, int *xout, int *yout) {
     int x=0, y=0, n=0;
     for (int i=0; i<string->length; n++) {
         if (n==posn) break;
@@ -655,10 +655,11 @@ int linedit_stringfindcolumn(lineditor *edit, linedit_string *string, int posn) 
         i+=len;
         if (!len) break;
     }
-    return x;
+    if (xout) *xout = x;
+    if (yout) *yout = y;
 }
 
-/** Finds the line and character number for a given position in the string.
+/** Finds the line and unicode character number for a given position in the string.
  * @param[in] string - the string
  * @param[in] posn - character position in the string
  * @param[out] xout - x coordinates corresponding to posn n
@@ -1255,8 +1256,8 @@ void linedit_redraw(lineditor *edit) {
     
     // Retrieve the current editing position
     int xpos, ypos, nlines;
-    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
-    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
+    linedit_stringdisplaycoordinates(edit, &edit->current, edit->posn, &xpos, &ypos);
+    linedit_stringdisplaycoordinates(edit, &edit->current, -1, NULL, &nlines);
     
     /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringdisplaywidth(edit, &edit->prompt);
@@ -1283,9 +1284,7 @@ void linedit_redraw(lineditor *edit) {
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
-    
-    int col = linedit_stringfindcolumn(edit, &edit->current, edit->posn);
-    linedit_movetocolumn(promptwidth+col-start);
+    linedit_movetocolumn(promptwidth+xpos-start);
 
     linedit_stringclear(&output);
 }
@@ -1536,8 +1535,6 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
-    /*char *txt = "🦋👩‍🔬👩‍❤️‍👩mà👋‱௸௵ဪ𐌀𐌁🏈🧼🐻🚿";*/
-    
     int vpos=0, nlines=0; // Keep track of the current vertical position and line number
 
     while (linedit_processkeypress(edit)) {
@@ -1622,8 +1619,6 @@ char *linedit(lineditor *edit) {
         case LINEDIT_UNSUPPORTED: linedit_unsupported(edit); break;
         case LINEDIT_SUPPORTED: linedit_supported(edit); break;
     }
-    
-    linedit_graphemeshow(&edit->graphemedict);
     
     return linedit_cstring(&edit->current);
 }
