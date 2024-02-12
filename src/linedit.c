@@ -1273,7 +1273,7 @@ void linedit_redraw(lineditor *edit) {
     // Retrieve the current editing position
     int xpos, ypos, nlines;
     linedit_stringdisplaycoordinates(edit, &edit->current, edit->posn, &xpos, &ypos);
-    linedit_stringdisplaycoordinates(edit, &edit->current, -1, NULL, &nlines);
+    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
     
     /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringdisplaywidth(edit, &edit->prompt);
@@ -1299,7 +1299,7 @@ void linedit_redraw(lineditor *edit) {
     linedit_renderstring(edit, output.string, start, end);
     
     char pos[20];
-    sprintf(pos, "[%i]", edit->posn);
+    sprintf(pos, "[%i, %i %i]", edit->posn, xpos, ypos);
     linedit_write(pos);
     
     linedit_erasetoendofline();
@@ -1372,6 +1372,8 @@ void linedit_processarrowkeypress(lineditor *edit, lineditormode mode, int delta
     if (delta>0) {
         linedit_nextgrapheme(edit);
     } else linedit_prevgrapheme(edit);
+    
+    linedit_atnewline(edit);
 }
 
 /** @brief Change the line */
