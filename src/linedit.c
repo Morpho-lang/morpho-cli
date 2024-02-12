@@ -10,165 +10,6 @@
 #define LINEDIT_CODESTRINGSIZE 24
 
 /* **********************************************************************
- * UTF8 support
- * ********************************************************************** */
-
-/** @brief Returns the number of bytes in the next character of a given utf8 string
-    @returns number of bytes */
-int linedit_utf8numberofbytes(char *string) {
-    if (!string) return 0;
-    uint8_t byte = * ((uint8_t *) string);
-    
-    if ((byte & 0xc0) == 0x80) return 0; // In the middle of a utf8 string
-    
-    // Get the number of bytes from the first character
-    if ((byte & 0xf8) == 0xf0) return 4;
-    if ((byte & 0xf0) == 0xe0) return 3;
-    if ((byte & 0xe0) == 0xc0) return 2;
-    return 1;
-}
-
-/** Decodes a utf8 encoded character pointed to by c into an int */
-int linedit_utf8toint(char *c) {
-    unsigned int ret = -1;
-    int nbytes=linedit_utf8numberofbytes(c);
-    switch (nbytes) {
-        case 1: ret=(c[0] & 0x7f); break;
-        case 2: ret=((c[0] & 0x1f)<<6) | (c[1] & 0x3f); break;
-        case 3: ret=((c[0] & 0x0f)<<12) | ((c[1] & 0x3f)<<6) | (c[2] & 0x3f); break;
-        case 4: ret=((c[0] & 0x0f)<<18) | ((c[1] & 0x3f)<<12) | ((c[2] & 0x3f)<<6) | (c[3] & 0x3f) ; break;
-        default: break;
-    }
-    
-    return ret;
-}
-
-/** @brief Utf8 character loop advancer.
-    @details Determines the number of bytes for the code point at c, and advances the counter i by that number.
-     Returns true if the number of bytes is >0 */
-bool linedit_utf8next(char *c, int *i) {
-    int adv = linedit_utf8numberofbytes(c);
-    if (adv) *i+=adv;
-    return adv;
-}
-
-/* **********************************************************************
- * Grapheme width dictionary
- * ********************************************************************** */
-
-void linedit_graphemeinit(linedit_graphemedictionary *dict) {
-    dict->count=0;
-    dict->capacity=0;
-    dict->contents=NULL;
-}
-
-void linedit_graphemeclear(linedit_graphemedictionary *dict) {
-    for (int i=0; i<dict->capacity; i++) {
-        if (dict->contents[i].grapheme) free(dict->contents[i].grapheme);
-    }
-    linedit_graphemeinit(dict);
-}
-
-uint32_t linedit_hashstring(const char* key, size_t length) {
-    uint32_t hash = 2166136261u; // String hashing function FNV-1a
-
-    for (unsigned int i=0; i < length; i++) {
-        hash ^= key[i];
-        hash *= 16777619u; // FNV prime number for 32 bits
-    }
-    
-    return hash;
-}
-
-bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width);
-
-bool linedit_graphemeresize(linedit_graphemedictionary *dict, int size) {
-    linedit_graphemeentry *new=malloc(size*sizeof(linedit_graphemeentry)), *old=dict->contents;
-    int osize=dict->capacity;
-
-    if (new) { // Clear the newly allocated structure
-        for (unsigned int i=0; i<size; i++) {
-            new[i].grapheme = NULL;
-            new[i].width = 0;
-        }
-    } else return false;
-    
-    dict->capacity=size;
-    dict->contents=new;
-    dict->count=0;
-    
-    if (old) { // Copy old contents across
-        for (unsigned int i=0; i<osize; i++) {
-            if (old[i].grapheme) if (!linedit_graphemeinsert(dict, old[i].grapheme, strlen(old[i].grapheme), old[i].width)) return false;
-        }
-    }
-    return true;
-}
-
-bool linedit_graphemefind(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
-    if (!dict->contents) return false;
-    uint32_t hash = linedit_hashstring(grapheme, length);
-    
-    int start = hash % dict->capacity;
-    int i=start;
-    
-    do {
-        if (!dict->contents[i].grapheme) { // Blank entry -> not found
-            if (posn) *posn = i;
-            return false;
-        }
-        
-        if (strncmp(grapheme, dict->contents[i].grapheme, length)==0) { // Found
-            if (posn) *posn = i;
-            return true;
-        }
-        
-        i = (i+1) % dict->capacity;
-    } while (i!=start); // Loop terminates once we return to the starting position
-    
-    return false;
-}
-
-#define LINEDIT_MINDICTIONARYSIZE 8
-#define LINEDIT_SIZEINCREASETHRESHOLD(x) (((x)>>1) + ((x)>>2))
-#define LINEDIT_INCREASEDICTIONARYSIZE(x) (2*x)
-
-bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width) {
-    
-    if (!dict->contents) {
-        if (!linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE)) return false;
-    } else if (dict->count+1 > LINEDIT_SIZEINCREASETHRESHOLD(dict->capacity)) {
-        if (!linedit_graphemeresize(dict, LINEDIT_INCREASEDICTIONARYSIZE(dict->capacity))) return false;
-    }
-    
-    int posn;
-    if (linedit_graphemefind(dict, grapheme, length, &posn)) return true;
-    
-    char *label = strndup(grapheme, length);
-    if (!label) return false;
-    dict->contents[posn].grapheme=label;
-    dict->contents[posn].width=width;
-    dict->count++;
-    return true;
-}
-
-bool linedit_graphemelookup(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *width) {
-    if (!dict->contents) return false;
-    int posn;
-    if (!linedit_graphemefind(dict, grapheme, length, &posn)) return false;
-    if (width) *width = dict->contents[posn].width;
-    return true;
-}
-
-void linedit_graphemeshow(linedit_graphemedictionary *dict) {
-    for (int i=0; i<dict->capacity; i++) {
-        if (dict->contents[i].grapheme) {
-            printf("%s: %i\n", dict->contents[i].grapheme, dict->contents[i].width);
-        }
-    }
-}
-
-/* **********************************************************************
  * Terminal
  * ********************************************************************** */
 
@@ -404,21 +245,192 @@ bool linedit_moveup(int n) {
      return true;
 }
 
+/* **********************************************************************
+ * Unicode support
+ * ********************************************************************** */
+
+/* ----------------------------------------
+ * Basic UTF8 support
+ * ---------------------------------------- */
+
+/** @brief Returns the number of bytes in the next character of a given utf8 string
+    @returns number of bytes */
+int linedit_utf8numberofbytes(char *string) {
+    if (!string) return 0;
+    uint8_t byte = * ((uint8_t *) string);
+    
+    if ((byte & 0xc0) == 0x80) return 0; // In the middle of a utf8 string
+    
+    // Get the number of bytes from the first character
+    if ((byte & 0xf8) == 0xf0) return 4;
+    if ((byte & 0xf0) == 0xe0) return 3;
+    if ((byte & 0xe0) == 0xc0) return 2;
+    return 1;
+}
+
+/** Decodes a utf8 encoded character pointed to by c into an int */
+int linedit_utf8toint(char *c) {
+    unsigned int ret = -1;
+    int nbytes=linedit_utf8numberofbytes(c);
+    switch (nbytes) {
+        case 1: ret=(c[0] & 0x7f); break;
+        case 2: ret=((c[0] & 0x1f)<<6) | (c[1] & 0x3f); break;
+        case 3: ret=((c[0] & 0x0f)<<12) | ((c[1] & 0x3f)<<6) | (c[2] & 0x3f); break;
+        case 4: ret=((c[0] & 0x0f)<<18) | ((c[1] & 0x3f)<<12) | ((c[2] & 0x3f)<<6) | (c[3] & 0x3f) ; break;
+        default: break;
+    }
+    
+    return ret;
+}
+
+/** @brief Utf8 character loop advancer.
+    @details Determines the number of bytes for the code point at c, and advances the counter i by that number.
+     Returns true if the number of bytes is >0 */
+bool linedit_utf8next(char *c, int *i) {
+    int adv = linedit_utf8numberofbytes(c);
+    if (adv) *i+=adv;
+    return adv;
+}
+
+/* ----------------------------------------
+ * Grapheme width dictionary
+ * ---------------------------------------- */
+
+void linedit_graphemeinit(linedit_graphemedictionary *dict) {
+    dict->count=0;
+    dict->capacity=0;
+    dict->contents=NULL;
+}
+
+void linedit_graphemeclear(linedit_graphemedictionary *dict) {
+    for (int i=0; i<dict->capacity; i++) {
+        if (dict->contents[i].grapheme) free(dict->contents[i].grapheme);
+    }
+    linedit_graphemeinit(dict);
+}
+
+uint32_t linedit_hashstring(const char* key, size_t length) {
+    uint32_t hash = 2166136261u; // String hashing function FNV-1a
+
+    for (unsigned int i=0; i < length; i++) {
+        hash ^= key[i];
+        hash *= 16777619u; // FNV prime number for 32 bits
+    }
+    
+    return hash;
+}
+
+bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width);
+
+bool linedit_graphemeresize(linedit_graphemedictionary *dict, int size) {
+    linedit_graphemeentry *new=malloc(size*sizeof(linedit_graphemeentry)), *old=dict->contents;
+    int osize=dict->capacity;
+
+    if (new) { // Clear the newly allocated structure
+        for (unsigned int i=0; i<size; i++) {
+            new[i].grapheme = NULL;
+            new[i].width = 0;
+        }
+    } else return false;
+    
+    dict->capacity=size;
+    dict->contents=new;
+    dict->count=0;
+    
+    if (old) { // Copy old contents across
+        for (unsigned int i=0; i<osize; i++) {
+            if (old[i].grapheme) if (!linedit_graphemeinsert(dict, old[i].grapheme, strlen(old[i].grapheme), old[i].width)) return false;
+        }
+    }
+    return true;
+}
+
+bool linedit_graphemefind(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
+    if (!dict->contents) return false;
+    uint32_t hash = linedit_hashstring(grapheme, length);
+    
+    int start = hash % dict->capacity;
+    int i=start;
+    
+    do {
+        if (!dict->contents[i].grapheme) { // Blank entry -> not found
+            if (posn) *posn = i;
+            return false;
+        }
+        
+        if (strncmp(grapheme, dict->contents[i].grapheme, length)==0) { // Found
+            if (posn) *posn = i;
+            return true;
+        }
+        
+        i = (i+1) % dict->capacity;
+    } while (i!=start); // Loop terminates once we return to the starting position
+    
+    return false;
+}
+
+#define LINEDIT_MINDICTIONARYSIZE 8
+#define LINEDIT_SIZEINCREASETHRESHOLD(x) (((x)>>1) + ((x)>>2))
+#define LINEDIT_INCREASEDICTIONARYSIZE(x) (2*x)
+
+bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width) {
+    
+    if (!dict->contents) {
+        if (!linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE)) return false;
+    } else if (dict->count+1 > LINEDIT_SIZEINCREASETHRESHOLD(dict->capacity)) {
+        if (!linedit_graphemeresize(dict, LINEDIT_INCREASEDICTIONARYSIZE(dict->capacity))) return false;
+    }
+    
+    int posn;
+    if (linedit_graphemefind(dict, grapheme, length, &posn)) return true;
+    
+    char *label = strndup(grapheme, length);
+    if (!label) return false;
+    dict->contents[posn].grapheme=label;
+    dict->contents[posn].width=width;
+    dict->count++;
+    return true;
+}
+
+bool linedit_graphemelookup(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *width) {
+    if (!dict->contents) return false;
+    int posn;
+    if (!linedit_graphemefind(dict, grapheme, length, &posn)) return false;
+    if (width) *width = dict->contents[posn].width;
+    return true;
+}
+
+void linedit_graphemeshow(linedit_graphemedictionary *dict) {
+    for (int i=0; i<dict->capacity; i++) {
+        if (dict->contents[i].grapheme) {
+            printf("%s: %i\n", dict->contents[i].grapheme, dict->contents[i].width);
+        }
+    }
+}
+
+/* ----------------------------------------
+ * Grapheme display width
+ * ---------------------------------------- */
+
 /** @brief Identifies the current grapheme length */
-int linedit_graphemelength(lineditor *edit, char *str) {
+size_t linedit_graphemelength(lineditor *edit, char *str) {
+    if (*str=='\0') return 0; // Ensure we return on null terminator
     if (edit->graphemefn) return edit->graphemefn(str, SIZE_MAX);
-    return linedit_utf8numberofbytes(str); // Fallback on displaying unicode chars one by one
+    return (size_t) linedit_utf8numberofbytes(str); // Fallback on displaying unicode chars one by one
 }
 
 /** @brief Returns the display with of a grapheme sequence if known */
-bool linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, int length, int *width) {
-    if (length==1) return 1;
+bool linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, size_t length, int *width) {
+    if (length==1) {
+        if (iscntrl(*grapheme)) return 0;
+        return 1;
+    }
     
     return linedit_graphemelookup(&edit->graphemedict, grapheme, length, width);
 }
 
 /** @brief Renders a grapheme sequence, measuring its display width */
-bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, int length, int *width) {
+bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, size_t length, int *width) {
     int x0=0, x1=0, w=0;
     linedit_getcursorposition(&x0, NULL);
     write(STDOUT_FILENO, grapheme, length);
@@ -428,10 +440,14 @@ bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, int length, i
     return linedit_graphemeinsert(&edit->graphemedict, grapheme, length, w);
 }
 
+/* **********************************************************************
+ * Rendering
+ * ********************************************************************** */
+
 /** @brief Renders a string, showing only characters in columns l...r */
 void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
     int i=0;
-    int length=0;
+    size_t length=0;
     
     for (char *s=string; *s!='\0'; s+=length) {
         length = linedit_graphemelength(edit, s);
@@ -597,13 +613,41 @@ void linedit_stringaddcstring(linedit_string *string, char *s) {
     string->length+=size;
 }
 
-/** Finds the width of a string in characters */
-int linedit_stringwidth(linedit_string *string) {
+/** Finds the length of a string in unicode characters */
+int linedit_stringlength(linedit_string *string) {
     int n=0;
     for (int i=0; i<string->length; n++) {
         if (!linedit_utf8next(string->string+i, &i)) break;
     }
     return n;
+}
+
+/** Finds the display width of a string */
+int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
+    int width=0;
+    size_t len;
+    for (int i=0; i<string->length; i+=len) {
+        int w=1;
+        len = linedit_graphemelength(edit, string->string+i);
+        linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
+        width+=w;
+    }
+    return width;
+}
+
+/** Finds the column position for a given grapheme in a string */
+int linedit_stringfindcolumn(lineditor *edit, linedit_string *string, int posn) {
+    int col=0, n=0;
+    size_t len;
+    for (int i=0; i<string->length && n<posn; i+=len, n++) {
+        if (string->string[i]=='\n') col=0;
+        
+        int w=1;
+        len = linedit_graphemelength(edit, string->string+i);
+        linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
+        col+=w;
+    }
+    return col;
 }
 
 /** Finds the line and character number for a given position in the string.
@@ -1148,7 +1192,7 @@ void linedit_setmode(lineditor *edit, lineditormode mode) {
  * @param edit     - the editor
  * @param posn     - position to set, or negative to move to end */
 void linedit_setposition(lineditor *edit, int posn) {
-    edit->posn=(posn<0 ? linedit_stringwidth(&edit->current) : posn);
+    edit->posn=(posn<0 ? linedit_stringlength(&edit->current) : posn);
 }
 
 /** @brief Advances the position by delta
@@ -1156,13 +1200,13 @@ void linedit_setposition(lineditor *edit, int posn) {
 void linedit_advanceposition(lineditor *edit, int delta) {
     edit->posn+=delta;
     if (edit->posn<0) edit->posn=0;
-    int linewidth = linedit_stringwidth(&edit->current);
+    int linewidth = linedit_stringlength(&edit->current);
     if (edit->posn>linewidth) edit->posn=linewidth;
 }
 
 /** @brief Checks if we're at the end of the input */
 bool linedit_atend(lineditor *edit) {
-    return (edit->posn==linedit_stringwidth(&edit->current));
+    return (edit->posn==linedit_stringlength(&edit->current));
 }
 
 /** @brief Checks if we're at a newline character */
@@ -1207,8 +1251,8 @@ void linedit_redraw(lineditor *edit) {
     linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
     
     /* Determine the left and right hand boundaries */
-    int promptwidth=linedit_stringwidth(&edit->prompt);
-    int stringwidth=linedit_stringwidth(&edit->current);
+    int promptwidth=linedit_stringdisplaywidth(edit, &edit->prompt);
+    int stringwidth=linedit_stringlength(&edit->current);
     
     int start=0, end=promptwidth+stringwidth+sugglength;
     /*if (end>=edit->ncols) {
@@ -1231,7 +1275,9 @@ void linedit_redraw(lineditor *edit) {
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
-    linedit_movetocolumn(promptwidth+xpos-start);
+    
+    int col = linedit_stringfindcolumn(edit, &edit->current, xpos);
+    linedit_movetocolumn(promptwidth+col-start);
 
     linedit_stringclear(&output);
 }
@@ -1425,7 +1471,7 @@ bool linedit_processkeypress(lineditor *edit) {
                             linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                             if (edit->clipboard.length>0) {
                                 linedit_stringinsert(&edit->current, edit->posn, edit->clipboard.string, edit->clipboard.length);
-                                linedit_advanceposition(edit, linedit_stringwidth(&edit->clipboard));
+                                linedit_advanceposition(edit, linedit_stringlength(&edit->clipboard));
                             }
                             break;
                         default: break;
@@ -1482,39 +1528,7 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
-    /*
-    char *txt = "🦋👩‍🔬👩‍❤️‍👩mà👋‱௸௵ဪ𐌀𐌁🏈🧼🐻🚿";
-    int width[100], xx0[100], xx1[100], nchars[100];
-    
-    int k=0;
-    for (size_t i=0, len; txt[i]!='\0'; i+=len, k++) {
-        len = edit->graphemefn(txt+i, SIZE_MAX);
-        
-        nchars[k]=len;
-        
-        char str[len+1];
-        strncpy(str, txt+i, len);
-        str[len]='\0';
-        
-        int x0, x1;
-        linedit_home();
-        linedit_getcursorposition(&x0, NULL);
-        linedit_write(str);
-        linedit_getcursorposition(&x1, NULL);
-        xx0[k]=x0;
-        xx1[k]=x1;
-        width[k]=x1-x0;
-        linedit_write("X");
-        
-        linedit_write("\n");
-    }
-    
-    for (int i=0; i<k; i++) {
-        char out[100];
-        linedit_home();
-        sprintf(out, "%i %i (%i, %i)\n",nchars[i], width[i], xx0[i], xx1[i]);
-        linedit_write(out);
-    } */
+    /*char *txt = "🦋👩‍🔬👩‍❤️‍👩mà👋‱௸௵ဪ𐌀𐌁🏈🧼🐻🚿";*/
     
     int vpos=0, nlines=0; // Keep track of the current vertical position and line number
 
