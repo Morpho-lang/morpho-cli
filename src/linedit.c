@@ -292,6 +292,22 @@ bool linedit_utf8next(char *c, int *i) {
     return adv;
 }
 
+/** @brief Count the number of UTF characters in a string
+    @param[in] start - start of string
+    @param[in] length - length of string
+    @param[out] count - number of UTF characters
+    @returns true on success */
+bool linedit_utf8count(char *start, size_t length, size_t *count) {
+    size_t len, n=0;
+    for (char *c=start; c<start+length && *c!='\0'; c+=len, n++) {
+        len=linedit_utf8numberofbytes(c);
+        if (!len) return false;
+    }
+    *count=n;
+    
+    return true;
+}
+
 /* ----------------------------------------
  * Grapheme width dictionary
  * ---------------------------------------- */
@@ -1281,6 +1297,11 @@ void linedit_redraw(lineditor *edit) {
     
     // Now render the output string
     linedit_renderstring(edit, output.string, start, end);
+    
+    char pos[20];
+    sprintf(pos, "[%i]", edit->posn);
+    linedit_write(pos);
+    
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
@@ -1320,10 +1341,37 @@ void linedit_movetoend(lineditor *edit) {
  * Process key presses
  * ---------------------------------------- */
 
+/** @brief Moves the current posn to the next grapheme */
+void linedit_nextgrapheme(lineditor *edit) {
+    char *str=linedit_stringlocate(&edit->current, edit->posn);
+    size_t length=linedit_graphemelength(edit, str), count;
+    
+    if (!linedit_utf8count(str, length, &count)) return;
+    edit->posn+=count;
+}
+
+/** @brief Moves the current posn to the previous grapheme */
+void linedit_prevgrapheme(lineditor *edit) {
+    char *str=linedit_stringlocate(&edit->current, edit->posn);
+    char *prev=edit->current.string;
+    
+    size_t len=0, count;
+    for (char *c=prev; c<str; c+=len) {
+        len=linedit_graphemelength(edit, c);
+        if (!len) return;
+        prev=c;
+    }
+    
+    if (!linedit_utf8count(prev, str-prev, &count)) return;
+    edit->posn-=count;
+}
+
 /** @brief Process a left keypress */
 void linedit_processarrowkeypress(lineditor *edit, lineditormode mode, int delta) {
     linedit_setmode(edit, mode);
-    linedit_advanceposition(edit, delta);
+    if (delta>0) {
+        linedit_nextgrapheme(edit);
+    } else linedit_prevgrapheme(edit);
 }
 
 /** @brief Change the line */
