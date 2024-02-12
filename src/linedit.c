@@ -1298,10 +1298,6 @@ void linedit_redraw(lineditor *edit) {
     // Now render the output string
     linedit_renderstring(edit, output.string, start, end);
     
-    char pos[20];
-    sprintf(pos, "[%i, %i %i]", edit->posn, xpos, ypos);
-    linedit_write(pos);
-    
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
