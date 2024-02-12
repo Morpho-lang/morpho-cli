@@ -631,11 +631,9 @@ void linedit_stringaddcstring(linedit_string *string, char *s) {
 
 /** Finds the length of a string in unicode characters */
 int linedit_stringlength(linedit_string *string) {
-    int n=0;
-    for (int i=0; i<string->length; n++) {
-        if (!linedit_utf8next(string->string+i, &i)) break;
-    }
-    return n;
+    size_t count=0;
+    linedit_utf8count(string->string, string->length, &count);
+    return (int) count;
 }
 
 /** Finds the display width of a string */
@@ -654,11 +652,13 @@ int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
 /** Finds the display coordinates for a given position in a string */
 void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, int posn, int *xout, int *yout) {
     int x=0, y=0, n=0;
-    for (int i=0; i<string->length; n++) {
-        if (n==posn) break;
+    size_t count;
+    for (int i=0; i<string->length; n+=count) {
+        if (n>=posn) break;
         
         char *c=string->string+i;
         size_t len = linedit_graphemelength(edit, c);
+        if (!linedit_utf8count(c, len, &count)) break;
         
         if (*c=='\n') {
             x=0; y++;
@@ -1652,7 +1652,6 @@ void linedit_clear(lineditor *edit) {
     linedit_stringclear(&edit->clipboard);
     linedit_graphemeclear(&edit->graphemedict);
 }
-
 
 /** Public interface to the line editor.
  *  @param   edit - a line editor that has been initialized with linedit_init.
