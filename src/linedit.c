@@ -637,17 +637,25 @@ int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
 
 /** Finds the column position for a given grapheme in a string */
 int linedit_stringfindcolumn(lineditor *edit, linedit_string *string, int posn) {
-    int col=0, n=0;
-    size_t len;
-    for (int i=0; i<string->length && n<posn; i+=len, n++) {
-        if (string->string[i]=='\n') col=0;
+    int x=0, y=0, n=0;
+    for (int i=0; i<string->length; n++) {
+        if (n==posn) break;
         
-        int w=1;
-        len = linedit_graphemelength(edit, string->string+i);
-        linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
-        col+=w;
+        char *c=string->string+i;
+        size_t len = linedit_graphemelength(edit, c);
+        
+        if (*c=='\n') {
+            x=0; y++;
+        } else {
+            int w=1;
+            linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
+            x+=w;
+        }
+
+        i+=len;
+        if (!len) break;
     }
-    return col;
+    return x;
 }
 
 /** Finds the line and character number for a given position in the string.
@@ -1276,7 +1284,7 @@ void linedit_redraw(lineditor *edit) {
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
     
-    int col = linedit_stringfindcolumn(edit, &edit->current, xpos);
+    int col = linedit_stringfindcolumn(edit, &edit->current, edit->posn);
     linedit_movetocolumn(promptwidth+col-start);
 
     linedit_stringclear(&output);
