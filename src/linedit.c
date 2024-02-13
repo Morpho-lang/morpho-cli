@@ -245,6 +245,16 @@ bool linedit_moveup(int n) {
      return true;
 }
 
+/** @brief Hides the cursor */
+bool linedit_hidecursor(void) {
+    return linedit_write("\033[?25l");
+}
+
+/** @brief Shows the cursor */
+bool linedit_showcursor(void) {
+    return linedit_write("\033[?25h");
+}
+
 /* **********************************************************************
  * Unicode support
  * ********************************************************************** */
@@ -1290,6 +1300,7 @@ void linedit_redraw(lineditor *edit) {
         end=start+edit->ncols-1;
     }*/
     
+    linedit_hidecursor();
     linedit_moveup(ypos); // Move to the starting line
     linedit_home();
     linedit_defaulttext();
@@ -1302,6 +1313,8 @@ void linedit_redraw(lineditor *edit) {
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
     linedit_movetocolumn(promptwidth+xpos-start);
+    
+    linedit_showcursor();
 
     linedit_stringclear(&output);
 }
