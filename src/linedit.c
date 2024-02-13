@@ -595,7 +595,7 @@ void linedit_stringinsert(linedit_string *string, size_t posn, char *c, size_t n
             if (!linedit_stringresize(string, string->length+n+1)) return;
         }
         /* Move the remaining part of the string */
-        memmove(string->string+offset+n, string->string+offset, string->length-posn+1);
+        memmove(string->string+offset+n, string->string+offset, string->length-offset+1);
         /* Copy in the text to insert */
         memmove(string->string+offset, c, n);
         string->length+=n;
