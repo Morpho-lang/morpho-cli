@@ -428,10 +428,10 @@ void linedit_graphemeshow(linedit_graphemedictionary *dict) {
  * Grapheme display width
  * ---------------------------------------- */
 
-/** @brief Identifies the current grapheme length */
-size_t linedit_graphemelength(lineditor *edit, char *str) {
+/** @brief Identifies the length of the next grapheme */
+size_t linedit_graphemelength(lineditor *edit, char *str, char *end) {
     if (*str=='\0') return 0; // Ensure we return on null terminator
-    if (edit->graphemefn) return edit->graphemefn(str, SIZE_MAX);
+    if (edit->graphemefn) return edit->graphemefn(str, end);
     return (size_t) linedit_utf8numberofbytes(str); // Fallback on displaying unicode chars one by one
 }
 
@@ -461,14 +461,14 @@ bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, size_t length
  * ********************************************************************** */
 
 /** @brief Renders a string, showing only characters in columns l...r */
-void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
+void linedit_renderstring(lineditor *edit, char *string, size_t length, int l, int r) {
     int i=0;
-    size_t length=0;
+    size_t len=0;
     
-    for (char *s=string; *s!='\0'; s+=length) {
-        length = linedit_graphemelength(edit, s);
+    for (char *s=string; *s!='\0'; s+=len) {
+        len = linedit_graphemelength(edit, s, string+length);
+        if (!len) break;
         
-        if (length==0) break;
         if (*s=='\r') { // Reset on a carriage return
             if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
             i=0;
@@ -488,10 +488,10 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
             }
         } else { // Otherwise show printable characters that lie within the window
             int width=1;
-            if (!linedit_graphemedisplaywidth(edit, s, length, &width)) {
-                linedit_graphememeasurewidth(edit, s, length, &width);
+            if (!linedit_graphemedisplaywidth(edit, s, len, &width)) {
+                linedit_graphememeasurewidth(edit, s, len, &width);
             } else if (i>=l && i<r) {
-                if (write(STDOUT_FILENO, s, length)==-1) return;
+                if (write(STDOUT_FILENO, s, len)==-1) return;
             }
             i+=1;
         }
@@ -642,7 +642,7 @@ int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
     size_t len;
     for (int i=0; i<string->length; i+=len) {
         int w=1;
-        len = linedit_graphemelength(edit, string->string+i);
+        len = linedit_graphemelength(edit, string->string+i, string->string+string->length);
         linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
         width+=w;
     }
@@ -657,7 +657,7 @@ void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, i
         if (n>=posn) break;
         
         char *c=string->string+i;
-        size_t len = linedit_graphemelength(edit, c);
+        size_t len = linedit_graphemelength(edit, c, string->string+string->length);
         if (!linedit_utf8count(c, len, &count)) break;
         
         if (*c=='\n') {
@@ -1296,7 +1296,7 @@ void linedit_redraw(lineditor *edit) {
     linedit_write(edit->prompt.string);
     
     // Now render the output string
-    linedit_renderstring(edit, output.string, start, end);
+    linedit_renderstring(edit, output.string, output.length, start, end);
     
     linedit_erasetoendofline();
     
@@ -1340,7 +1340,7 @@ void linedit_movetoend(lineditor *edit) {
 /** @brief Moves the current posn to the next grapheme */
 void linedit_nextgrapheme(lineditor *edit) {
     char *str=linedit_stringlocate(&edit->current, edit->posn);
-    size_t length=linedit_graphemelength(edit, str), count;
+    size_t length=linedit_graphemelength(edit, str, edit->current.string+edit->current.length), count;
     
     if (!linedit_utf8count(str, length, &count)) return;
     edit->posn+=count;
@@ -1353,7 +1353,7 @@ void linedit_prevgrapheme(lineditor *edit) {
     
     size_t len=0, count;
     for (char *c=prev; c<str; c+=len) {
-        len=linedit_graphemelength(edit, c);
+        len=linedit_graphemelength(edit, c, edit->current.string+edit->current.length);
         if (!len) return;
         prev=c;
     }

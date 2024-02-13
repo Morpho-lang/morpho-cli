@@ -166,11 +166,11 @@ typedef struct {
 
 /** @brief Unicode grapheme splitter
  *  @param[in]  in          - a string
- *  @param[in]  maxlength - maximum length of the grapheme [set to SIZE_MAX]
+ *  @param[in]  end        - end of string
  *  @returns offset to next grapheme
  *  @details If provided, linedit will use this function to split UTF8 code into graphemes, which enables length estimation.
 */
-typedef size_t (*linedit_graphemefn) (const char *in, size_t maxlength);
+typedef size_t (*linedit_graphemefn) (const char *in, const char *end);
 
 /* -----------------------
  * lineditor structure
