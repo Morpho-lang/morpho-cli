@@ -942,7 +942,7 @@ void linedit_stringsetcolor(linedit_string *out, linedit_color col) {
 
 /** @brief Writes a control sequence to set a given emphasis */
 void linedit_stringsetemphasis(linedit_string *out, linedit_emphasis emph) {
-    char code[LINEDIT_CODESTRINGSIZE];
+    char code[LINEDIT_CODESTRINGSIZE] = "";
     switch (emph) {
         case LINEDIT_BOLD: sprintf(code, "\033[1m"); break;
         case LINEDIT_UNDERLINE: sprintf(code, "\033[4m"); break;
