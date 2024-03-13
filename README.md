@@ -1,8 +1,10 @@
 # morpho-cli
 
-A command line interface for the morpho language. Part of development efforts for version 0.6.0 - presently not recommended for public use.
+A Terminal app for the [morpho language](https://github.com/Morpho-lang/morpho). 
 
-To install, first install morpho-libmorpho and then clone this repository:
+Improved unicode support requires an external library e.g. [libgrapheme](https://libs.suckless.org/libgrapheme/) or [libunistring](https://www.gnu.org/software/libunistring/)
+
+To install, clone this repository:
 
     git clone https://github.com/Morpho-lang/morpho-cli.git
 
@@ -11,7 +13,7 @@ and then,
     cd morpho-cli 
     mkdir build
     cd build
-    cmake ..
+    cmake -DCMAKE_BUILD_TYPE=Release ..
     make install 
 
 You may need to use sudo make install.
