@@ -1,8 +1,6 @@
 # morpho-cli
 
-A Terminal app for the [morpho language](https://github.com/Morpho-lang/morpho). 
-
-Improved unicode support requires an external library e.g. [libgrapheme](https://libs.suckless.org/libgrapheme/) or [libunistring](https://www.gnu.org/software/libunistring/)
+A Terminal app for the [morpho language](https://github.com/Morpho-lang/morpho). Improved unicode support requires an external library e.g. [libgrapheme](https://libs.suckless.org/libgrapheme/) or [libunistring](https://www.gnu.org/software/libunistring/)
 
 To install, clone this repository:
 
