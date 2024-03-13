@@ -11,6 +11,14 @@
 #include "parse.h"
 #include "file.h"
 
+#ifdef CLI_USELIBUNISTRING
+    #include <unigbrk.h>
+#endif
+
+#ifdef CLI_USELIBGRAPHEME
+    #include <grapheme.h>
+#endif
+
 char *cli_globalsrc=NULL;
 
 #define CLI_BUFFERSIZE 1024
@@ -269,6 +277,20 @@ void cli_help(lineditor *edit, char *query, error *err, bool avail) {
     }
 }
 
+#ifdef CLI_USELIBUNISTRING
+size_t libunistring_graphemefn(const char *in, const char *end) {
+    char *next = (char *) u8_grapheme_next((unistring_uint8_t *) in, (unistring_uint8_t *) end);
+    if (next>in) return next-in;
+    return 0;
+}
+#endif
+
+#ifdef CLI_USELIBGRAPHEME
+size_t libgrapheme_graphemefn(const char *in, const char *end) {
+    return grapheme_next_character_break_utf8(in, end-in);
+}
+#endif
+
 /** @brief Provide a command line interface */
 void cli(clioptions opt) {
     bool tty=linedit_checktty();
@@ -311,6 +333,12 @@ void cli(clioptions opt) {
     linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
     linedit_multiline(&edit, cli_multiline, NULL, CLI_CONTINUATIONPROMPT);
     linedit_autocomplete(&edit, cli_complete, NULL);
+#ifdef CLI_USELIBUNISTRING
+    linedit_setgraphemesplitter(&edit, libunistring_graphemefn);
+#endif
+#ifdef CLI_USELIBGRAPHEME
+    linedit_setgraphemesplitter(&edit, libgrapheme_graphemefn);
+#endif
 
     morpho_setprintfn(v, cli_printcallbackfn, &edit);
     morpho_setwarningfn(v, cli_warningcallbackfn, &edit);

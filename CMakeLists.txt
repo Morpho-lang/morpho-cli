@@ -35,7 +35,51 @@ endforeach()
 find_library(MORPHO_LIBRARY
     NAMES morpho libmorpho
 )
-target_link_libraries(morpho6 ${MORPHO_LIBRARY})
+
+# Try to find a grapheme splitting library
+
+# First, try to locate libgrapheme
+find_library(GRAPHEME_LIBRARY
+    NAMES grapheme libgrapheme
+)
+
+# Find grapheme.h header file 
+find_file(GRAPHEME_HEADER grapheme.h 
+          HINTS 
+            /usr/local/include
+            /opt/homebrew/include/)
+
+if(GRAPHEME_LIBRARY)
+    message("-- Found libgrapheme for grapheme splitting.")
+    add_definitions( -DCLI_USELIBGRAPHEME )
+else()
+    # Locate libunistring
+    find_library(GRAPHEME_LIBRARY
+        NAMES unistring libunistring
+    )
+
+    # Find unigbrk.h header file 
+    find_file(GRAPHEME_HEADER unigbrk.h 
+            HINTS 
+                /usr/local/include
+                /opt/homebrew/include/)
+
+    if(GRAPHEME_LIBRARY)
+        message("-- Found libunistring for grapheme splitting.")
+        add_definitions( -DCLI_USELIBUNISTRING )
+    endif() 
+endif() 
+
+# Identify folder that the grapheme library is located in from GRAPHEME_HEADER and store in GRAPHEME_INCLUDE
+get_filename_component(GRAPHEME_INCLUDE ${GRAPHEME_HEADER} DIRECTORY)
+
+# Link the grapheme library if provided
+if(GRAPHEME_LIBRARY)
+    target_link_libraries(morpho6 ${MORPHO_LIBRARY} ${GRAPHEME_LIBRARY})
+    target_include_directories(morpho6 PUBLIC ${GRAPHEME_INCLUDE})
+else() 
+    message("!! No grapheme splitting library found")
+endif()
 
 # Install the resulting binary
 install(TARGETS morpho6)

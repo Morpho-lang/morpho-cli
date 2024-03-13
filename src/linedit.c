@@ -10,49 +10,6 @@
 #define LINEDIT_CODESTRINGSIZE 24
 
 /* **********************************************************************
- * UTF8 support
- * ********************************************************************** */
-
-/** @brief Returns the number of bytes in the next character of a given utf8 string
-    @returns number of bytes */
-int linedit_utf8numberofbytes(char *string) {
-    if (!string) return 0;
-    uint8_t byte = * ((uint8_t *) string);
-    
-    if ((byte & 0xc0) == 0x80) return 0; // In the middle of a utf8 string
-    
-    // Get the number of bytes from the first character
-    if ((byte & 0xf8) == 0xf0) return 4;
-    if ((byte & 0xf0) == 0xe0) return 3;
-    if ((byte & 0xe0) == 0xc0) return 2;
-    return 1;
-}
-
-/** Decodes a utf8 encoded character pointed to by c into an int */
-int linedit_utf8toint(char *c) {
-    unsigned int ret = -1;
-    int nbytes=linedit_utf8numberofbytes(c);
-    switch (nbytes) {
-        case 1: ret=(c[0] & 0x7f); break;
-        case 2: ret=((c[0] & 0x1f)<<6) | (c[1] & 0x3f); break;
-        case 3: ret=((c[0] & 0x0f)<<12) | ((c[1] & 0x3f)<<6) | (c[2] & 0x3f); break;
-        case 4: ret=((c[0] & 0x0f)<<18) | ((c[1] & 0x3f)<<12) | ((c[2] & 0x3f)<<6) | (c[3] & 0x3f) ; break;
-        default: break;
-    }
-    
-    return ret;
-}
-
-/** @brief Utf8 character loop advancer.
-    @details Determines the number of bytes for the code point at c, and advances the counter i by that number.
-     Returns true if the number of bytes is >0 */
-bool linedit_utf8next(char *c, int *i) {
-    int adv = linedit_utf8numberofbytes(c);
-    if (adv) *i+=adv;
-    return adv;
-}
-
-/* **********************************************************************
  * Terminal
  * ********************************************************************** */
 
@@ -155,7 +112,7 @@ void linedit_disablerawmode(void) {
  * Get cursor position and width
  * ---------------------------------------- */
 
-#define LINEDIT_CURSORPOSN_BUFFERSIZE 32
+#define LINEDIT_CURSORPOSN_BUFFERSIZE 128
 /** @brief Gets the cursor position */
 bool linedit_getcursorposition(int *x, int *y) {
     char answer[LINEDIT_CURSORPOSN_BUFFERSIZE];
@@ -193,6 +150,21 @@ void linedit_getterminalwidth(lineditor *edit) {
     } else {
         // Should get cursor position etc here.
     }
+}
+
+/* ----------------------------------------
+ * Detect if keypresses are available
+ * ---------------------------------------- */
+
+/** Detect if a keypress is available; non-blocking */
+bool linedit_keypressavailable(void) {
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+    
+    struct timeval timeout={ .tv_sec=0, .tv_usec=0 };
+    
+    return (select(1, &readfds, NULL, NULL, &timeout)>0);
 }
 
 /* ----------------------------------------
@@ -273,14 +245,240 @@ bool linedit_moveup(int n) {
      return true;
 }
 
-/** @brief Renders a string, showing only characters in columns l...r */
-void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
-    int i=0;
-    int width=0;
+/** @brief Hides the cursor */
+bool linedit_hidecursor(void) {
+    return linedit_write("\033[?25l");
+}
+
+/** @brief Shows the cursor */
+bool linedit_showcursor(void) {
+    return linedit_write("\033[?25h");
+}
+
+/* **********************************************************************
+ * Unicode support
+ * ********************************************************************** */
+
+/* ----------------------------------------
+ * Basic UTF8 support
+ * ---------------------------------------- */
+
+/** @brief Returns the number of bytes in the next character of a given utf8 string
+    @returns number of bytes */
+int linedit_utf8numberofbytes(char *string) {
+    if (!string) return 0;
+    uint8_t byte = * ((uint8_t *) string);
     
-    for (char *s=string; *s!='\0'; s+=width) {
-        width=linedit_utf8numberofbytes(s);
-        if (width==0) break;
+    if ((byte & 0xc0) == 0x80) return 0; // In the middle of a utf8 string
+    
+    // Get the number of bytes from the first character
+    if ((byte & 0xf8) == 0xf0) return 4;
+    if ((byte & 0xf0) == 0xe0) return 3;
+    if ((byte & 0xe0) == 0xc0) return 2;
+    return 1;
+}
+
+/** Decodes a utf8 encoded character pointed to by c into an int */
+int linedit_utf8toint(char *c) {
+    unsigned int ret = -1;
+    int nbytes=linedit_utf8numberofbytes(c);
+    switch (nbytes) {
+        case 1: ret=(c[0] & 0x7f); break;
+        case 2: ret=((c[0] & 0x1f)<<6) | (c[1] & 0x3f); break;
+        case 3: ret=((c[0] & 0x0f)<<12) | ((c[1] & 0x3f)<<6) | (c[2] & 0x3f); break;
+        case 4: ret=((c[0] & 0x0f)<<18) | ((c[1] & 0x3f)<<12) | ((c[2] & 0x3f)<<6) | (c[3] & 0x3f) ; break;
+        default: break;
+    }
+    
+    return ret;
+}
+
+/** @brief Utf8 character loop advancer.
+    @details Determines the number of bytes for the code point at c, and advances the counter i by that number.
+     Returns true if the number of bytes is >0 */
+bool linedit_utf8next(char *c, int *i) {
+    int adv = linedit_utf8numberofbytes(c);
+    if (adv) *i+=adv;
+    return adv;
+}
+
+/** @brief Count the number of UTF characters in a string
+    @param[in] start - start of string
+    @param[in] length - length of string
+    @param[out] count - number of UTF characters
+    @returns true on success */
+bool linedit_utf8count(char *start, size_t length, size_t *count) {
+    size_t len, n=0;
+    for (char *c=start; c<start+length && *c!='\0'; c+=len, n++) {
+        len=linedit_utf8numberofbytes(c);
+        if (!len) return false;
+    }
+    *count=n;
+    
+    return true;
+}
+
+/* ----------------------------------------
+ * Grapheme width dictionary
+ * ---------------------------------------- */
+
+void linedit_graphemeinit(linedit_graphemedictionary *dict) {
+    dict->count=0;
+    dict->capacity=0;
+    dict->contents=NULL;
+}
+
+void linedit_graphemeclear(linedit_graphemedictionary *dict) {
+    for (int i=0; i<dict->capacity; i++) {
+        if (dict->contents[i].grapheme) free(dict->contents[i].grapheme);
+    }
+    linedit_graphemeinit(dict);
+}
+
+uint32_t linedit_hashstring(const char* key, size_t length) {
+    uint32_t hash = 2166136261u; // String hashing function FNV-1a
+
+    for (unsigned int i=0; i < length; i++) {
+        hash ^= key[i];
+        hash *= 16777619u; // FNV prime number for 32 bits
+    }
+    
+    return hash;
+}
+
+bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width);
+
+bool linedit_graphemeresize(linedit_graphemedictionary *dict, int size) {
+    linedit_graphemeentry *new=malloc(size*sizeof(linedit_graphemeentry)), *old=dict->contents;
+    int osize=dict->capacity;
+
+    if (new) { // Clear the newly allocated structure
+        for (unsigned int i=0; i<size; i++) {
+            new[i].grapheme = NULL;
+            new[i].width = 0;
+        }
+    } else return false;
+    
+    dict->capacity=size;
+    dict->contents=new;
+    dict->count=0;
+    
+    if (old) { // Copy old contents across
+        for (unsigned int i=0; i<osize; i++) {
+            if (old[i].grapheme) if (!linedit_graphemeinsert(dict, old[i].grapheme, strlen(old[i].grapheme), old[i].width)) return false;
+        }
+    }
+    return true;
+}
+
+bool linedit_graphemefind(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *posn) {
+    if (!dict->contents) return false;
+    uint32_t hash = linedit_hashstring(grapheme, length);
+    
+    int start = hash % dict->capacity;
+    int i=start;
+    
+    do {
+        if (!dict->contents[i].grapheme) { // Blank entry -> not found
+            if (posn) *posn = i;
+            return false;
+        }
+        
+        if (strncmp(grapheme, dict->contents[i].grapheme, length)==0) { // Found
+            if (posn) *posn = i;
+            return true;
+        }
+        
+        i = (i+1) % dict->capacity;
+    } while (i!=start); // Loop terminates once we return to the starting position
+    
+    return false;
+}
+
+#define LINEDIT_MINDICTIONARYSIZE 8
+#define LINEDIT_SIZEINCREASETHRESHOLD(x) (((x)>>1) + ((x)>>2))
+#define LINEDIT_INCREASEDICTIONARYSIZE(x) (2*x)
+
+bool linedit_graphemeinsert(linedit_graphemedictionary *dict, char *grapheme, size_t length, int width) {
+    
+    if (!dict->contents) {
+        if (!linedit_graphemeresize(dict, LINEDIT_MINDICTIONARYSIZE)) return false;
+    } else if (dict->count+1 > LINEDIT_SIZEINCREASETHRESHOLD(dict->capacity)) {
+        if (!linedit_graphemeresize(dict, LINEDIT_INCREASEDICTIONARYSIZE(dict->capacity))) return false;
+    }
+    
+    int posn;
+    if (linedit_graphemefind(dict, grapheme, length, &posn)) return true;
+    
+    char *label = strndup(grapheme, length);
+    if (!label) return false;
+    dict->contents[posn].grapheme=label;
+    dict->contents[posn].width=width;
+    dict->count++;
+    return true;
+}
+
+bool linedit_graphemelookup(linedit_graphemedictionary *dict, char *grapheme, size_t length, int *width) {
+    if (!dict->contents) return false;
+    int posn;
+    if (!linedit_graphemefind(dict, grapheme, length, &posn)) return false;
+    if (width) *width = dict->contents[posn].width;
+    return true;
+}
+
+void linedit_graphemeshow(linedit_graphemedictionary *dict) {
+    for (int i=0; i<dict->capacity; i++) {
+        if (dict->contents[i].grapheme) {
+            printf("%s: %i\n", dict->contents[i].grapheme, dict->contents[i].width);
+        }
+    }
+}
+
+/* ----------------------------------------
+ * Grapheme display width
+ * ---------------------------------------- */
+
+/** @brief Identifies the length of the next grapheme */
+size_t linedit_graphemelength(lineditor *edit, char *str, char *end) {
+    if (*str=='\0') return 0; // Ensure we return on null terminator
+    if (edit->graphemefn) return edit->graphemefn(str, end);
+    return (size_t) linedit_utf8numberofbytes(str); // Fallback on displaying unicode chars one by one
+}
+
+/** @brief Returns the display with of a grapheme sequence if known */
+bool linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, size_t length, int *width) {
+    if (length==1) {
+        if (iscntrl(*grapheme)) return 0;
+        return 1;
+    }
+    
+    return linedit_graphemelookup(&edit->graphemedict, grapheme, length, width);
+}
+
+/** @brief Renders a grapheme sequence, measuring its display width */
+bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, size_t length, int *width) {
+    int x0=0, x1=0, w=0;
+    linedit_getcursorposition(&x0, NULL);
+    write(STDOUT_FILENO, grapheme, length);
+    linedit_getcursorposition(&x1, NULL);
+    w=(x1>x0 ? x1-x0 : 1);
+    *width = w;
+    return linedit_graphemeinsert(&edit->graphemedict, grapheme, length, w);
+}
+
+/* **********************************************************************
+ * Rendering
+ * ********************************************************************** */
+
+/** @brief Renders a string, showing only characters in columns l...r */
+void linedit_renderstring(lineditor *edit, char *string, size_t length, int l, int r) {
+    int i=0;
+    size_t len=0;
+    
+    for (char *s=string; *s!='\0'; s+=len) {
+        len = linedit_graphemelength(edit, s, string+length);
+        if (!len) break;
+        
         if (*s=='\r') { // Reset on a carriage return
             if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
             i=0;
@@ -299,8 +497,13 @@ void linedit_renderstring(lineditor *edit, char *string, int l, int r) {
                 s=ctl;
             }
         } else { // Otherwise show printable characters that lie within the window
-            if (i>=l && i<r) if (write(STDOUT_FILENO, s, width)==-1) return;
-            i++;
+            int width=1;
+            if (!linedit_graphemedisplaywidth(edit, s, len, &width)) {
+                linedit_graphememeasurewidth(edit, s, len, &width);
+            } else if (i>=l && i<r) {
+                if (write(STDOUT_FILENO, s, len)==-1) return;
+            }
+            i+=1;
         }
     }
 }
@@ -392,7 +595,7 @@ void linedit_stringinsert(linedit_string *string, size_t posn, char *c, size_t n
             if (!linedit_stringresize(string, string->length+n+1)) return;
         }
         /* Move the remaining part of the string */
-        memmove(string->string+offset+n, string->string+offset, string->length-posn+1);
+        memmove(string->string+offset+n, string->string+offset, string->length-offset+1);
         /* Copy in the text to insert */
         memmove(string->string+offset, c, n);
         string->length+=n;
@@ -436,16 +639,53 @@ void linedit_stringaddcstring(linedit_string *string, char *s) {
     string->length+=size;
 }
 
-/** Finds the width of a string in characters */
-int linedit_stringwidth(linedit_string *string) {
-    int n=0;
-    for (int i=0; i<string->length; n++) {
-        if (!linedit_utf8next(string->string+i, &i)) break;
-    }
-    return n;
+/** Finds the length of a string in unicode characters */
+int linedit_stringlength(linedit_string *string) {
+    size_t count=0;
+    linedit_utf8count(string->string, string->length, &count);
+    return (int) count;
 }
 
-/** Finds the line and character number for a given position in the string.
+/** Finds the display width of a string */
+int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
+    int width=0;
+    size_t len;
+    for (int i=0; i<string->length; i+=len) {
+        int w=1;
+        len = linedit_graphemelength(edit, string->string+i, string->string+string->length);
+        linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
+        width+=w;
+    }
+    return width;
+}
+
+/** Finds the display coordinates for a given position in a string */
+void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, int posn, int *xout, int *yout) {
+    int x=0, y=0, n=0;
+    size_t count;
+    for (int i=0; i<string->length; n+=count) {
+        if (n>=posn) break;
+        
+        char *c=string->string+i;
+        size_t len = linedit_graphemelength(edit, c, string->string+string->length);
+        if (!linedit_utf8count(c, len, &count)) break;
+        
+        if (*c=='\n') {
+            x=0; y++;
+        } else {
+            int w=1;
+            linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
+            x+=w;
+        }
+
+        i+=len;
+        if (!len) break;
+    }
+    if (xout) *xout = x;
+    if (yout) *yout = y;
+}
+
+/** Finds the line and unicode character number for a given position in the string.
  * @param[in] string - the string
  * @param[in] posn - character position in the string
  * @param[out] xout - x coordinates corresponding to posn n
@@ -702,7 +942,7 @@ void linedit_stringsetcolor(linedit_string *out, linedit_color col) {
 
 /** @brief Writes a control sequence to set a given emphasis */
 void linedit_stringsetemphasis(linedit_string *out, linedit_emphasis emph) {
-    char code[LINEDIT_CODESTRINGSIZE];
+    char code[LINEDIT_CODESTRINGSIZE] = "";
     switch (emph) {
         case LINEDIT_BOLD: sprintf(code, "\033[1m"); break;
         case LINEDIT_UNDERLINE: sprintf(code, "\033[4m"); break;
@@ -987,7 +1227,7 @@ void linedit_setmode(lineditor *edit, lineditormode mode) {
  * @param edit     - the editor
  * @param posn     - position to set, or negative to move to end */
 void linedit_setposition(lineditor *edit, int posn) {
-    edit->posn=(posn<0 ? linedit_stringwidth(&edit->current) : posn);
+    edit->posn=(posn<0 ? linedit_stringlength(&edit->current) : posn);
 }
 
 /** @brief Advances the position by delta
@@ -995,13 +1235,13 @@ void linedit_setposition(lineditor *edit, int posn) {
 void linedit_advanceposition(lineditor *edit, int delta) {
     edit->posn+=delta;
     if (edit->posn<0) edit->posn=0;
-    int linewidth = linedit_stringwidth(&edit->current);
+    int linewidth = linedit_stringlength(&edit->current);
     if (edit->posn>linewidth) edit->posn=linewidth;
 }
 
 /** @brief Checks if we're at the end of the input */
 bool linedit_atend(lineditor *edit) {
-    return (edit->posn==linedit_stringwidth(&edit->current));
+    return (edit->posn==linedit_stringlength(&edit->current));
 }
 
 /** @brief Checks if we're at a newline character */
@@ -1042,12 +1282,12 @@ void linedit_redraw(lineditor *edit) {
     
     // Retrieve the current editing position
     int xpos, ypos, nlines;
-    linedit_stringcoordinates(&edit->current, edit->posn, &xpos, &ypos);
+    linedit_stringdisplaycoordinates(edit, &edit->current, edit->posn, &xpos, &ypos);
     linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
     
     /* Determine the left and right hand boundaries */
-    int promptwidth=linedit_stringwidth(&edit->prompt);
-    int stringwidth=linedit_stringwidth(&edit->current);
+    int promptwidth=linedit_stringdisplaywidth(edit, &edit->prompt);
+    int stringwidth=linedit_stringlength(&edit->current);
     
     int start=0, end=promptwidth+stringwidth+sugglength;
     /*if (end>=edit->ncols) {
@@ -1060,17 +1300,21 @@ void linedit_redraw(lineditor *edit) {
         end=start+edit->ncols-1;
     }*/
     
+    linedit_hidecursor();
     linedit_moveup(ypos); // Move to the starting line
     linedit_home();
     linedit_defaulttext();
     linedit_write(edit->prompt.string);
     
     // Now render the output string
-    linedit_renderstring(edit, output.string, start, end);
+    linedit_renderstring(edit, output.string, output.length, start, end);
+    
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
     linedit_movetocolumn(promptwidth+xpos-start);
+    
+    linedit_showcursor();
 
     linedit_stringclear(&output);
 }
@@ -1106,10 +1350,39 @@ void linedit_movetoend(lineditor *edit) {
  * Process key presses
  * ---------------------------------------- */
 
+/** @brief Moves the current posn to the next grapheme */
+void linedit_nextgrapheme(lineditor *edit) {
+    char *str=linedit_stringlocate(&edit->current, edit->posn);
+    size_t length=linedit_graphemelength(edit, str, edit->current.string+edit->current.length), count;
+    
+    if (!linedit_utf8count(str, length, &count)) return;
+    edit->posn+=count;
+}
+
+/** @brief Moves the current posn to the previous grapheme */
+void linedit_prevgrapheme(lineditor *edit) {
+    char *str=linedit_stringlocate(&edit->current, edit->posn);
+    char *prev=edit->current.string;
+    
+    size_t len=0, count;
+    for (char *c=prev; c<str; c+=len) {
+        len=linedit_graphemelength(edit, c, edit->current.string+edit->current.length);
+        if (!len) return;
+        prev=c;
+    }
+    
+    if (!linedit_utf8count(prev, str-prev, &count)) return;
+    edit->posn-=count;
+}
+
 /** @brief Process a left keypress */
 void linedit_processarrowkeypress(lineditor *edit, lineditormode mode, int delta) {
     linedit_setmode(edit, mode);
-    linedit_advanceposition(edit, delta);
+    if (delta>0) {
+        linedit_nextgrapheme(edit);
+    } else linedit_prevgrapheme(edit);
+    
+    linedit_atnewline(edit);
 }
 
 /** @brief Change the line */
@@ -1129,150 +1402,152 @@ bool linedit_processkeypress(lineditor *edit) {
     
     linedit_keypressinit(&key);
     
-    if (linedit_readkey(edit, &key)) {
-        switch (key.type) {
-            case CHARACTER:
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                linedit_stringinsert(&edit->current, edit->posn, key.c, key.nbytes);
-                linedit_advanceposition(edit, 1);
-                break;
-            case DELETE:
-                if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
-                    /* Delete the selection */
-                    int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
-                    int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
-                    linedit_stringdelete(&edit->current, lposn, rposn-lposn);
-                    edit->posn=lposn;
-                } else {
-                    /* Delete a character */
-                    if (edit->posn>0) {
-                        linedit_stringdelete(&edit->current, edit->posn-1, 1);
-                        linedit_advanceposition(edit, -1);
+    do {
+        if (linedit_readkey(edit, &key)) {
+            switch (key.type) {
+                case CHARACTER:
+                    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                    linedit_stringinsert(&edit->current, edit->posn, key.c, key.nbytes);
+                    linedit_advanceposition(edit, 1);
+                    break;
+                case DELETE:
+                    if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
+                        /* Delete the selection */
+                        int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
+                        int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
+                        linedit_stringdelete(&edit->current, lposn, rposn-lposn);
+                        edit->posn=lposn;
+                    } else {
+                        /* Delete a character */
+                        if (edit->posn>0) {
+                            linedit_stringdelete(&edit->current, edit->posn-1, 1);
+                            linedit_advanceposition(edit, -1);
+                        }
                     }
-                }
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                break;
-            case LEFT:
-                linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
-                break;
-            case RIGHT:
-                linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
-                break;
-            case SHIFT_LEFT:
-                linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, -1);
-                break;
-            case SHIFT_RIGHT:
-                linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, +1);
-                break;
-            case UP:
-            {
-                if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
-                    linedit_setmode(edit, LINEDIT_HISTORYMODE);
-                    linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
-                }
-                
-                linedit_historyadvance(edit, 1);
-                linedit_setposition(edit, -1);
-            }
-                break;
-            case DOWN:
-                if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
-                    linedit_historyadvance(edit, -1);
+                    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                    break;
+                case LEFT:
+                    linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
+                    break;
+                case RIGHT:
+                    linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
+                    break;
+                case SHIFT_LEFT:
+                    linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, -1);
+                    break;
+                case SHIFT_RIGHT:
+                    linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, +1);
+                    break;
+                case UP:
+                {
+                    if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
+                        linedit_setmode(edit, LINEDIT_HISTORYMODE);
+                        linedit_historyadd(edit, (edit->current.string ? edit->current.string : ""));
+                    }
+                    
+                    linedit_historyadvance(edit, 1);
                     linedit_setposition(edit, -1);
-                } else if (linedit_aresuggestionsavailable(edit)) {
-                    linedit_advancesuggestions(edit, 1);
-                    regeneratesuggestions=false;
                 }
-                break;
-            case RETURN:
-                if (linedit_shouldmultiline(edit)) {
-                    linedit_stringaddcstring(&edit->current, "\n");
-                    linedit_advanceposition(edit, +1);
-                } else return false;
-                break; 
-            case TAB:
-                linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                /* If suggestions are available (i.e. we're at the end of the line)... */
-                if (linedit_aresuggestionsavailable(edit)) {
-                    char *sugg = linedit_currentsuggestion(edit);
-                    if (sugg) {
-                        linedit_stringaddcstring(&edit->current, sugg);
-                        linedit_movetoend(edit);
+                    break;
+                case DOWN:
+                    if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
+                        linedit_historyadvance(edit, -1);
+                        linedit_setposition(edit, -1);
+                    } else if (linedit_aresuggestionsavailable(edit)) {
+                        linedit_advancesuggestions(edit, 1);
+                        regeneratesuggestions=false;
                     }
-                } else { // Otherwise simply add a tab character
-                    linedit_stringinsert(&edit->current, edit->posn, "\t", 1);
-                    linedit_advanceposition(edit, +1);
-                }
-                break;
-            case CTRL: /* Handle ctrl+letter combos */
-                switch(LINEDIT_KEYPRESSGETCHAR(&key)) {
-                    case 'A': /* Move to start of line */
-                    {
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        
-                        int line;
-                        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
-                        linedit_stringfindposition(&edit->current, 0, line, &edit->posn);
-                    }
-                        break;
-                    case 'B': /* Move backward */
-                        linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
-                        break;
-                    case 'C': /* Copy */
-                        if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
-                            int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
-                            int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
-                            size_t lindx, rindx;
-                            if (!linedit_stringutf8index(&edit->current, lposn, 0, &lindx)) break;
-                            if (!linedit_stringutf8index(&edit->current, rposn, 0, &rindx)) break;
-                            linedit_stringclear(&edit->clipboard);
-                            linedit_stringappend(&edit->clipboard, edit->current.string+lindx, (size_t) rindx-lindx);
+                    break;
+                case RETURN:
+                    if (linedit_shouldmultiline(edit)) {
+                        linedit_stringaddcstring(&edit->current, "\n");
+                        linedit_advanceposition(edit, +1);
+                    } else return false;
+                    break;
+                case TAB:
+                    linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                    /* If suggestions are available (i.e. we're at the end of the line)... */
+                    if (linedit_aresuggestionsavailable(edit)) {
+                        char *sugg = linedit_currentsuggestion(edit);
+                        if (sugg) {
+                            linedit_stringaddcstring(&edit->current, sugg);
+                            linedit_movetoend(edit);
                         }
-                        break;
-                    case 'D': /* Delete the character underneath the cursor */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_stringdelete(&edit->current, edit->posn, 1);
-                        break;
-                    case 'E': { /* Move to end of line */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        int line;
-                        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
-                        linedit_stringfindposition(&edit->current, -1, line, &edit->posn);
+                    } else { // Otherwise simply add a tab character
+                        linedit_stringinsert(&edit->current, edit->posn, "\t", 1);
+                        linedit_advanceposition(edit, +1);
                     }
-                        break;
-                    case 'F': /* Move forward */
-                        linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
-                        break;
-                    case 'G': { /* Abort current editing session */
-                        linedit_stringclear(&edit->current);
-                        edit->posn=0;
-                        return false;
-                    }
-                    case 'L': /* Clear buffer */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        linedit_stringclear(&edit->current);
-                        edit->posn=0;
-                        break;
-                    case 'N': /* Next line */
-                        linedit_processchangeline(edit, 1);
-                        break;
-                    case 'P': /* Previous line */
-                        linedit_processchangeline(edit, -1);
-                        break;
-                    case 'V': /* Paste */
-                        linedit_setmode(edit, LINEDIT_DEFAULTMODE);
-                        if (edit->clipboard.length>0) {
-                            linedit_stringinsert(&edit->current, edit->posn, edit->clipboard.string, edit->clipboard.length);
-                            linedit_advanceposition(edit, linedit_stringwidth(&edit->clipboard));
+                    break;
+                case CTRL: /* Handle ctrl+letter combos */
+                    switch(LINEDIT_KEYPRESSGETCHAR(&key)) {
+                        case 'A': /* Move to start of line */
+                        {
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            
+                            int line;
+                            linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
+                            linedit_stringfindposition(&edit->current, 0, line, &edit->posn);
                         }
-                        break;
-                    default: break;
-                }
-                break;
-            default:
-                break;
+                            break;
+                        case 'B': /* Move backward */
+                            linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
+                            break;
+                        case 'C': /* Copy */
+                            if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
+                                int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
+                                int rposn = (edit->sposn < edit->posn ? edit->posn : edit->sposn);
+                                size_t lindx, rindx;
+                                if (!linedit_stringutf8index(&edit->current, lposn, 0, &lindx)) break;
+                                if (!linedit_stringutf8index(&edit->current, rposn, 0, &rindx)) break;
+                                linedit_stringclear(&edit->clipboard);
+                                linedit_stringappend(&edit->clipboard, edit->current.string+lindx, (size_t) rindx-lindx);
+                            }
+                            break;
+                        case 'D': /* Delete the character underneath the cursor */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            linedit_stringdelete(&edit->current, edit->posn, 1);
+                            break;
+                        case 'E': { /* Move to end of line */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            int line;
+                            linedit_stringcoordinates(&edit->current, edit->posn, NULL, &line);
+                            linedit_stringfindposition(&edit->current, -1, line, &edit->posn);
+                        }
+                            break;
+                        case 'F': /* Move forward */
+                            linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
+                            break;
+                        case 'G': { /* Abort current editing session */
+                            linedit_stringclear(&edit->current);
+                            edit->posn=0;
+                            return false;
+                        }
+                        case 'L': /* Clear buffer */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            linedit_stringclear(&edit->current);
+                            edit->posn=0;
+                            break;
+                        case 'N': /* Next line */
+                            linedit_processchangeline(edit, 1);
+                            break;
+                        case 'P': /* Previous line */
+                            linedit_processchangeline(edit, -1);
+                            break;
+                        case 'V': /* Paste */
+                            linedit_setmode(edit, LINEDIT_DEFAULTMODE);
+                            if (edit->clipboard.length>0) {
+                                linedit_stringinsert(&edit->current, edit->posn, edit->clipboard.string, edit->clipboard.length);
+                                linedit_advanceposition(edit, linedit_stringlength(&edit->clipboard));
+                            }
+                            break;
+                        default: break;
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
-    }
+    } while (linedit_keypressavailable());
     
     if (regeneratesuggestions) linedit_generatesuggestions(edit);
     
@@ -1369,6 +1644,8 @@ void linedit_init(lineditor *edit) {
     edit->cref=NULL;
     edit->multiline=NULL;
     edit->mlref=NULL;
+    edit->graphemefn=NULL;
+    linedit_graphemeinit(&edit->graphemedict);
 }
 
 /** Finalize a line editor */
@@ -1384,8 +1661,8 @@ void linedit_clear(lineditor *edit) {
     linedit_stringclear(&edit->prompt);
     linedit_stringclear(&edit->cprompt);
     linedit_stringclear(&edit->clipboard);
+    linedit_graphemeclear(&edit->graphemedict);
 }
-
 
 /** Public interface to the line editor.
  *  @param   edit - a line editor that has been initialized with linedit_init.
@@ -1472,6 +1749,14 @@ void linedit_setprompt(lineditor *edit, char *prompt) {
     if (!edit) return;
     linedit_stringclear(&edit->prompt);
     linedit_stringaddcstring(&edit->prompt, prompt);
+}
+
+/** @brief Sets the grapheme splitter to use
+ *  @param[in] edit           Line editor to configure
+ *  @param[in] graphemefn       Grapheme splitter to use */
+void linedit_setgraphemesplitter(lineditor *edit, linedit_graphemefn graphemefn) {
+    if (!edit) return;
+    edit->graphemefn=graphemefn;
 }
 
 /** @brief Displays a string with a given color and emphasis
