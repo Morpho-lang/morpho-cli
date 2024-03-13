@@ -1,6 +1,8 @@
 # morpho-cli
 
-A Terminal app for the [morpho language](https://github.com/Morpho-lang/morpho). Improved unicode support requires an external library e.g. [libgrapheme](https://libs.suckless.org/libgrapheme/) or [libunistring](https://www.gnu.org/software/libunistring/).
+A terminal app for the [morpho language](https://github.com/Morpho-lang/morpho).  Improved unicode support requires an external library e.g. [libgrapheme](https://libs.suckless.org/libgrapheme/) or [libunistring](https://www.gnu.org/software/libunistring/).
+
+Like morpho itself, Morpho-cli is released under an MIT license (see LICENSE.txt for details). See the main morpho repository for information about contributing etc. Please report any issues or feature requests about the morpho-cli terminal app specifically here: suggestions for improvement are very welcome. 
 
 To install, clone this repository:
 
