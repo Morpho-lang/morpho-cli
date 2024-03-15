@@ -9,8 +9,9 @@
 
 #include <stdio.h>
 
-#include "morpho.h"
-#include "object.h"
+#include <morpho.h>
+#include <object.h>
+
 #include "linedit.h"
 
 extern objecttype objecthelptopictype;

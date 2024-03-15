@@ -7,11 +7,12 @@
 #ifndef cli_h
 #define cli_h
 
-#include "morpho.h"
-#include "varray.h"
+#include <morpho.h>
+#include <varray.h>
+#include <common.h>
+
 #include "linedit.h"
 #include "help.h"
-#include "common.h"
 
 #include "debugger.h"
 

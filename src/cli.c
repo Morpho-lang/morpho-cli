@@ -6,10 +6,11 @@
 
 #include <time.h>
 
+#include <parse.h>
+#include <file.h>
+
 #include "cli.h"
 #include "debugger.h"
-#include "parse.h"
-#include "file.h"
 
 #ifdef CLI_USELIBUNISTRING
     #include <unigbrk.h>

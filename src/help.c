@@ -8,10 +8,11 @@
 #include <ctype.h>
 #include <dirent.h>
 
-#include "morpho.h"
+#include <morpho.h>
+#include <common.h>
+#include <resources.h>
+
 #include "help.h"
-#include "common.h"
-#include "resources.h"
 
 /** The interactive help system uses a collection of Markdown files, located in
  *  MORPHO_HELPFOLDER, that define available topics. Help files are all

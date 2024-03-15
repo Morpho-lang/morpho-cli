@@ -4,13 +4,13 @@
  *  @brief Command line debugger
 */
 
-#include "compile.h"
-#include "vm.h"
-#include "parse.h"
-#include "debug.h"
+#include <compile.h>
+#include <vm.h>
+#include <parse.h>
+#include <debug.h>
+#include <gc.h>
 
 #include "debugger.h"
-#include "gc.h"
 
 /** @brief Debugger front end
  *
