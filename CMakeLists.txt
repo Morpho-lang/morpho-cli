@@ -10,9 +10,10 @@ add_subdirectory(src)
 find_file(MORPHO_HEADER
           morpho.h 
           HINTS 
-          /usr/local/opt/morpho
-          /opt/homebrew/opt/morpho
+          /usr/local/include/
           /usr/local/include/morpho
+          /opt/homebrew/include/
+          /opt/homebrew/include/morpho
           )
 
 # Identify folder that morpho.h is located in from MORPHO_HEADER and store in MORPHO_INCLUDE
