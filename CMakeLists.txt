@@ -38,6 +38,7 @@ find_library(MORPHO_LIBRARY
 )
 
 # Try to find a grapheme splitting library
+unset(GRAPHEME_LIBRARY CACHE)
 
 # First, try to locate libgrapheme
 find_library(GRAPHEME_LIBRARY
@@ -81,6 +82,9 @@ if(GRAPHEME_LIBRARY)
 else() 
     message("!! No grapheme splitting library found")
 endif()
+
+get_directory_property( DirDefs COMPILE_DEFINITIONS )
+message( "COMPILE_DEFINITIONS = ${DirDefs}" )
 
 # Install the resulting binary
 install(TARGETS morpho6)

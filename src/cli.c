@@ -280,7 +280,7 @@ void cli_help(lineditor *edit, char *query, error *err, bool avail) {
 
 #ifdef CLI_USELIBUNISTRING
 size_t libunistring_graphemefn(const char *in, const char *end) {
-    char *next = (char *) u8_grapheme_next((unistring_uint8_t *) in, (unistring_uint8_t *) end);
+    char *next = (char *) u8_grapheme_next((uint8_t *) in, (uint8_t *) end);
     if (next>in) return next-in;
     return 0;
 }
