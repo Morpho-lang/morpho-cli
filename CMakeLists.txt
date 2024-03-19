@@ -38,6 +38,7 @@ find_library(MORPHO_LIBRARY
 )
 
 # Try to find a grapheme splitting library
+unset(GRAPHEME_LIBRARY CACHE)
 
 # First, try to locate libgrapheme
 find_library(GRAPHEME_LIBRARY
