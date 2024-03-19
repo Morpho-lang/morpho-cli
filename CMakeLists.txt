@@ -83,8 +83,5 @@ else()
     message("!! No grapheme splitting library found")
 endif()
 
-get_directory_property( DirDefs COMPILE_DEFINITIONS )
-message( "COMPILE_DEFINITIONS = ${DirDefs}" )
-
 # Install the resulting binary
 install(TARGETS morpho6)
