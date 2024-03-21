@@ -14,6 +14,8 @@ find_file(MORPHO_HEADER
           /usr/local/include/morpho
           /opt/homebrew/include/
           /opt/homebrew/include/morpho
+          /home/linuxbrew/.linuxbrew/include/
+          /home/linuxbrew/.linuxbrew/include/morpho
           )
 
 # Identify folder that morpho.h is located in from MORPHO_HEADER and store in MORPHO_INCLUDE
@@ -49,7 +51,8 @@ find_library(GRAPHEME_LIBRARY
 find_file(GRAPHEME_HEADER grapheme.h 
           HINTS 
             /usr/local/include
-            /opt/homebrew/include/)
+            /opt/homebrew/include/
+            /home/linuxbrew/.linuxbrew/include/)
 
 if(GRAPHEME_LIBRARY)
     message("-- Found libgrapheme for grapheme splitting.")
@@ -64,7 +67,8 @@ else()
     find_file(GRAPHEME_HEADER unigbrk.h 
             HINTS 
                 /usr/local/include
-                /opt/homebrew/include/)
+                /opt/homebrew/include/
+                /home/linuxbrew/.linuxbrew/include/)
 
     if(GRAPHEME_LIBRARY)
         message("-- Found libunistring for grapheme splitting.")
