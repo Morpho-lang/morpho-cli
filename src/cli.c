@@ -57,8 +57,8 @@ void cli_reporterror(error *err, vm *v) {
                 snprintf(posnbuffer, CLI_BUFFERSIZE, " [line %u char %u", err->line, err->posn+1);
                 linedit_displaywithstyle(&linedit, posnbuffer, CLI_ERRORCOLOR, CLI_NOEMPHASIS);
                 
-                if (err->module) {
-                    cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 2, " in module ", err->module);
+                if (err->file) {
+                    cli_displaywithstyle(&linedit, CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, " in module '", err->file, "'");
                 }
                 
                 linedit_displaywithstyle(&linedit, "] ", CLI_ERRORCOLOR, CLI_NOEMPHASIS);

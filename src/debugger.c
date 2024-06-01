@@ -165,7 +165,7 @@ bool clidebugger_lexstring(lexer *l, token *tok, error *err) {
     
     if (lex_isatend(l)) {
         /* Unterminated string */
-        morpho_writeerrorwithid(err, LEXER_UNTERMINATEDSTRING, l->line, l->posn);
+        morpho_writeerrorwithid(err, LEXER_UNTERMINATEDSTRING, NULL, l->line, l->posn);
         lex_recordtoken(l, TOKEN_NONE, tok);
         return false;
     }
