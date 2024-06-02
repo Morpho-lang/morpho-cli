@@ -664,7 +664,7 @@ void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, i
     int x=0, y=0, n=0;
     size_t count;
     for (int i=0; i<string->length; n+=count) {
-        if (n>=posn) break;
+        if (posn>=0 && n>=posn) break;
         
         char *c=string->string+i;
         size_t len = linedit_graphemelength(edit, c, string->string+string->length);
@@ -675,7 +675,9 @@ void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, i
         } else {
             int w=1;
             linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
-            x+=w;
+            if (x+w>edit->ncols) { // Lines that are too long wrap over
+                x=w; y++;
+            } else x+=w;
         }
 
         i+=len;
@@ -1277,28 +1279,18 @@ void linedit_redraw(lineditor *edit) {
         sugglength=(int) strlen(suggestion);
     }
     
-    // Reser default text
+    // Reset default text
     linedit_stringdefaulttext(&output);
     
-    // Retrieve the current editing position
+    // Retrieve the display coordinates of the current editing position
     int xpos, ypos, nlines;
     linedit_stringdisplaycoordinates(edit, &edit->current, edit->posn, &xpos, &ypos);
-    linedit_stringcoordinates(&edit->current, -1, NULL, &nlines);
+    linedit_stringdisplaycoordinates(edit, &edit->current, -1, NULL, &nlines);
     
-    /* Determine the left and right hand boundaries */
     int promptwidth=linedit_stringdisplaywidth(edit, &edit->prompt);
     int stringwidth=linedit_stringlength(&edit->current);
     
     int start=0, end=promptwidth+stringwidth+sugglength;
-    /*if (end>=edit->ncols) {
-        // Are we near the start?
-        if (promptwidth+edit->posn<edit->ncols) {
-            start = 0;
-        } else {
-            start = promptwidth+edit->posn-edit->ncols+1;
-        }
-        end=start+edit->ncols-1;
-    }*/
     
     linedit_hidecursor();
     linedit_moveup(ypos); // Move to the starting line
