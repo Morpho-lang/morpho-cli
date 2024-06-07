@@ -1583,6 +1583,8 @@ void linedit_unsupported(lineditor *edit) {
 void linedit_supported(lineditor *edit) {
     linedit_enablerawmode();
 
+    linedit_stringclear(&edit->debug);
+    
     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
     linedit_getterminalwidth(edit);
     linedit_setposition(edit, 0);
@@ -1604,7 +1606,7 @@ void linedit_supported(lineditor *edit) {
         linedit_stringclear(&edit->debug);
         linedit_stringaddcstring(&edit->debug, debug);
         
-        //linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
+        linedit_changeheight(edit, ndlines, newndlines, dline, newdline);
         linedit_redraw(edit);
         
         line=newline; nlines=newnlines;
