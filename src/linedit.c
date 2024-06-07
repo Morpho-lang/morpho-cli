@@ -1602,7 +1602,7 @@ void linedit_supported(lineditor *edit) {
         char debug[255];
         sprintf(debug, "[%i %i; %i %i -> %i %i; %i %i]", line, nlines, dline, ndlines, newline, newnlines, newdline, newndlines);
         linedit_stringclear(&edit->debug);
-        linedit_stringappend(&edit->debug, debug, strlen(debug));
+        linedit_stringaddcstring(&edit->debug, debug);
         
         //linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
         linedit_redraw(edit);
