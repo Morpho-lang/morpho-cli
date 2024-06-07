@@ -661,7 +661,10 @@ int linedit_stringdisplaywidth(lineditor *edit, linedit_string *string) {
 
 /** Finds the display coordinates for a given position in a string */
 void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, int posn, int *xout, int *yout) {
-    int x=0, y=0, n=0;
+    int pwidth=linedit_stringdisplaywidth(edit, &edit->prompt); // Width of the prompt
+    int cpwidth=linedit_stringdisplaywidth(edit, &edit->cprompt); // Width of the continuation prompt
+    
+    int x=pwidth, y=0, n=0;
     size_t count;
     for (int i=0; i<string->length; n+=count) {
         if (posn>=0 && n>=posn) break;
@@ -671,12 +674,12 @@ void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, i
         if (!linedit_utf8count(c, len, &count)) break;
         
         if (*c=='\n') {
-            x=0; y++;
+            x=cpwidth; y++; // Account for continuation prompt
         } else {
             int w=1;
             linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
-            if (x+w>=edit->ncols) { // Lines that are too long wrap over
-                x=w; y++;
+            if (x+w>=edit->ncols) { // Lines that are too long simply wrap over
+                x=0; y++;
             } else x+=w;
         }
 
@@ -1287,10 +1290,9 @@ void linedit_redraw(lineditor *edit) {
     linedit_stringdisplaycoordinates(edit, &edit->current, edit->posn, &xpos, &ypos);
     linedit_stringdisplaycoordinates(edit, &edit->current, -1, NULL, &nlines);
     
-    int promptwidth=linedit_stringdisplaywidth(edit, &edit->prompt);
     int stringwidth=linedit_stringlength(&edit->current);
     
-    int start=0, end=promptwidth+stringwidth+sugglength;
+    int start=0, end=stringwidth+sugglength;
     
     linedit_hidecursor();
     linedit_moveup(ypos); // Move to the starting line
@@ -1301,12 +1303,12 @@ void linedit_redraw(lineditor *edit) {
     // Now render the output string
     linedit_renderstring(edit, output.string, output.length, start, end);
     
-    if (edit->debug.length) linedit_renderstring(edit, edit->debug.string, edit->debug.length, 0, linedit_stringdisplaywidth(edit, &edit->debug));
+    //if (edit->debug.length) linedit_renderstring(edit, edit->debug.string, edit->debug.length, 0, linedit_stringdisplaywidth(edit, &edit->debug));
     
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
-    linedit_movetocolumn(promptwidth+xpos-start);
+    linedit_movetocolumn(xpos);
     
     linedit_showcursor();
 
@@ -1606,7 +1608,7 @@ void linedit_supported(lineditor *edit) {
         linedit_stringclear(&edit->debug);
         linedit_stringaddcstring(&edit->debug, debug);
         
-        linedit_changeheight(edit, ndlines, newndlines, dline, newdline);
+        //linedit_changeheight(edit, ndlines, newndlines, dline, newdline);
         linedit_redraw(edit);
         
         line=newline; nlines=newnlines;
