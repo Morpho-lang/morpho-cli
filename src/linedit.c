@@ -675,7 +675,7 @@ void linedit_stringdisplaycoordinates(lineditor *edit, linedit_string *string, i
         } else {
             int w=1;
             linedit_graphemedisplaywidth(edit, string->string+i, len, &w);
-            if (x+w>edit->ncols) { // Lines that are too long wrap over
+            if (x+w>=edit->ncols) { // Lines that are too long wrap over
                 x=w; y++;
             } else x+=w;
         }
@@ -1301,6 +1301,8 @@ void linedit_redraw(lineditor *edit) {
     // Now render the output string
     linedit_renderstring(edit, output.string, output.length, start, end);
     
+    if (edit->debug.length) linedit_renderstring(edit, edit->debug.string, edit->debug.length, 0, linedit_stringdisplaywidth(edit, &edit->debug));
+    
     linedit_erasetoendofline();
     
     linedit_moveup(nlines-ypos);  // Move to the cursor position
@@ -1586,16 +1588,27 @@ void linedit_supported(lineditor *edit) {
     linedit_setposition(edit, 0);
     linedit_redraw(edit);
     
-    int vpos=0, nlines=0; // Keep track of the current vertical position and line number
+    int line=0, nlines=0; // Current real line number
+    int dline=0, ndlines=0; // Current display line number and display line count
 
     while (linedit_processkeypress(edit)) {
-        int newvpos;
-        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &newvpos);
-        int newnlines=linedit_stringcountlines(&edit->current);
-        linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
-            
+        int newline, newnlines=linedit_stringcountlines(&edit->current);
+        linedit_stringcoordinates(&edit->current, edit->posn, NULL, &newline);
+        
+        int newdline, newndlines;
+        linedit_stringdisplaycoordinates(edit, &edit->current, edit->posn, NULL, &newdline);
+        linedit_stringdisplaycoordinates(edit, &edit->current, -1, NULL, &newndlines);
+        
+        char debug[255];
+        sprintf(debug, "[%i %i; %i %i -> %i %i; %i %i]", line, nlines, dline, ndlines, newline, newnlines, newdline, newndlines);
+        linedit_stringclear(&edit->debug);
+        linedit_stringappend(&edit->debug, debug, strlen(debug));
+        
+        //linedit_changeheight(edit, nlines, newnlines, vpos, newvpos);
         linedit_redraw(edit);
-        vpos=newvpos; nlines=newnlines;
+        
+        line=newline; nlines=newnlines;
+        dline=newdline; ndlines=newndlines;
     }
 
     /* Ensure we're always on the last line of the input when redrawing before exit */
@@ -1631,6 +1644,7 @@ void linedit_init(lineditor *edit) {
     linedit_stringinit(&edit->prompt);
     linedit_stringinit(&edit->cprompt);
     linedit_stringinit(&edit->clipboard);
+    linedit_stringinit(&edit->debug);
     linedit_setprompt(edit, LINEDIT_DEFAULTPROMPT);
     edit->completer=NULL;
     edit->cref=NULL;
@@ -1653,6 +1667,7 @@ void linedit_clear(lineditor *edit) {
     linedit_stringclear(&edit->prompt);
     linedit_stringclear(&edit->cprompt);
     linedit_stringclear(&edit->clipboard);
+    linedit_stringclear(&edit->debug);
     linedit_graphemeclear(&edit->graphemedict);
 }
 

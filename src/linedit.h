@@ -210,6 +210,8 @@ typedef struct {
     
     linedit_graphemefn graphemefn; /** Grapheme splitting */
     linedit_graphemedictionary graphemedict; /** Grapheme dictionary */
+    
+    linedit_string debug; /** Debugging info display **/
 } lineditor;
 
 /* **********************************************************************
