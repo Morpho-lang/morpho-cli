@@ -5,7 +5,7 @@
 */
 
 #include <time.h>
-
+#include <stdio.h>
 #include <parse.h>
 #include <file.h>
 
@@ -77,16 +77,31 @@ void cli_reporterror(error *err, vm *v) {
 
 /** Print callback */
 void cli_printcallbackfn(vm *v, void *ref, char *string) {
-    lineditor *linedit = (lineditor *) ref;
+    lineditor *l = (lineditor *) ref;
 
-    cli_displaywithstyle(linedit, CLI_DEFAULTCOLOR, LINEDIT_BOLD, 1, string);
+    cli_displaywithstyle(l, CLI_DEFAULTCOLOR, LINEDIT_BOLD, 1, string);
+}
+
+/** Input callback */
+void cli_inputcallbackfn(vm *v, void *ref, morphoinputmode mode, varray_char *str) {
+    if (mode==MORPHO_INPUT_KEYPRESS) {
+        int key = getchar();
+        if (key!=EOF) varray_charwrite(str, (char) key);
+    } else {
+        lineditor line;
+        linedit_init(&line);
+        linedit_setprompt(&line, "");
+        char *out=linedit(&line);
+        if (out) varray_charadd(str, out, (int) strlen(out));
+        linedit_clear(&line);
+    }
 }
 
 /** Warning callback */
 void cli_warningcallbackfn(vm *v, void *ref, error *err) {
-    lineditor *linedit = (lineditor *) ref;
+    lineditor *l = (lineditor *) ref;
     
-    cli_displaywithstyle(linedit, CLI_WARNINGCOLOR, CLI_NOEMPHASIS, 5, "Warning '", err->id, "': ", err->msg, "\n");
+    cli_displaywithstyle(l, CLI_WARNINGCOLOR, CLI_NOEMPHASIS, 5, "Warning '", err->id, "': ", err->msg, "\n");
 }
 
 /** Warning callback */
@@ -341,6 +356,7 @@ void cli(clioptions opt) {
     linedit_setgraphemesplitter(&edit, libgrapheme_graphemefn);
 #endif
 
+    morpho_setinputfn(v, cli_inputcallbackfn, NULL);
     morpho_setprintfn(v, cli_printcallbackfn, &edit);
     morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
     morpho_setdebuggerfn(v, cli_debuggercallbackfn, NULL);
@@ -422,6 +438,7 @@ void cli_run(const char *in, clioptions opt) {
     linedit_init(&edit);
     linedit_syntaxcolor(&edit, cli_lex, &l, cli_tokencolors);
 
+    morpho_setinputfn(v, cli_inputcallbackfn, &edit);
     morpho_setprintfn(v, cli_printcallbackfn, &edit);
     morpho_setwarningfn(v, cli_warningcallbackfn, &edit);
     morpho_setdebuggerfn(v, cli_debuggercallbackfn, NULL);

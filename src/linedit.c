@@ -219,7 +219,7 @@ bool linedit_linefeed(void) {
 bool linedit_movetocolumn(int posn) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (posn>0) {
-        sprintf(code, "\r\033[%iC", posn);
+        snprintf(code, LINEDIT_CODESTRINGSIZE, "\r\033[%iC", posn);
         return linedit_write(code);
     }
     return true;
@@ -229,7 +229,7 @@ bool linedit_movetocolumn(int posn) {
 bool linedit_moveup(int n) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (n>0) {
-        sprintf(code, "\033[%iA", n);
+        snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[%iA", n);
         return linedit_write(code);
     }
     return true;
@@ -239,7 +239,7 @@ bool linedit_moveup(int n) {
  bool linedit_movedown(int n) {
     char code[LINEDIT_CODESTRINGSIZE];
     if (n>0) {
-        sprintf(code, "\033[%iB", n);
+        snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[%iB", n);
         return linedit_write(code);
     }
      return true;
@@ -931,14 +931,14 @@ bool linedit_shouldmultiline(lineditor *edit) {
 /** @brief Writes a control sequence to reset default text */
 void linedit_stringdefaulttext(linedit_string *out) {
     char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[0m");
+    snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[0m");
     linedit_stringaddcstring(out, code);
 }
 
 /** @brief Writes a control sequence to set a given color */
 void linedit_stringsetcolor(linedit_string *out, linedit_color col) {
     char code[LINEDIT_CODESTRINGSIZE];
-    sprintf(code, "\033[%im", (col==LINEDIT_DEFAULTCOLOR ? 0: 30+col));
+    snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[%im", (col==LINEDIT_DEFAULTCOLOR ? 0: 30+col));
     linedit_stringaddcstring(out, code);
 }
 
@@ -946,9 +946,9 @@ void linedit_stringsetcolor(linedit_string *out, linedit_color col) {
 void linedit_stringsetemphasis(linedit_string *out, linedit_emphasis emph) {
     char code[LINEDIT_CODESTRINGSIZE] = "";
     switch (emph) {
-        case LINEDIT_BOLD: sprintf(code, "\033[1m"); break;
-        case LINEDIT_UNDERLINE: sprintf(code, "\033[4m"); break;
-        case LINEDIT_REVERSE: sprintf(code, "\033[7m"); break;
+        case LINEDIT_BOLD: snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[1m"); break;
+        case LINEDIT_UNDERLINE: snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[4m"); break;
+        case LINEDIT_REVERSE: snprintf(code, LINEDIT_CODESTRINGSIZE, "\033[7m"); break;
         case LINEDIT_NONE: break;
     }
     

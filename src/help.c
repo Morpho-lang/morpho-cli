@@ -458,15 +458,19 @@ bool help_load(char *file) {
  *  @returns true if any help files were successfully processed. */
 bool help_findfiles(void) {
     bool success=false;
-    resourceenumerator en;
-    value out;
-    char *ext[] = { MORPHO_HELPEXTENSION, "" };
-    morpho_resourceenumeratorinit(&en, MORPHO_HELPDIR, NULL, ext, true);
-    while (morpho_enumerateresources(&en, &out)) {
-        if (help_load(MORPHO_GETCSTRING(out))) success=true;
-        morpho_freeobject(out);
+    varray_value files;
+    varray_valueinit(&files);
+    
+    if (morpho_listresources(MORPHO_RESOURCE_HELP, &files)) {
+        for (int i=0; i<files.count; i++) {
+            if (MORPHO_ISSTRING(files.data[i]) &&
+                help_load(MORPHO_GETCSTRING(files.data[i]))) success=true;
+        }
     }
-    morpho_resourceenumeratorclear(&en);
+    
+    for (int i=0; i<files.count; i++) morpho_freeobject(files.data[i]);
+    varray_valueclear(&files);
+    
     return success;
 }
 
