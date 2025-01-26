@@ -265,6 +265,7 @@ bool linedit_write(char *string) {
         fprintf(stderr, "Error writing to terminal.\n");
         return false;
     }
+    fflush(stdout);
     return true;
 }
 
@@ -274,6 +275,7 @@ bool linedit_writechar(char c) {
         fprintf(stderr, "Error writing to terminal.\n");
         return false;
     }
+    fflush(stdout);
     return true;
 }
 
