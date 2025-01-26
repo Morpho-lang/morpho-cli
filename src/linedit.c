@@ -74,7 +74,10 @@ void linedit_enablerawmode(void) {
     HANDLE hConsole = GetStdHandle(STD_INPUT_HANDLE);
     DWORD mode;
     GetConsoleMode(hConsole, &mode);
-    SetConsoleMode(hConsole, mode & ~ENABLE_PROCESSED_INPUT);
+    SetConsoleMode(hConsole, (mode & ~(ENABLE_LINE_INPUT |
+                                      ENABLE_ECHO_INPUT | 
+                                      ENABLE_PROCESSED_INPUT) |
+                                      ENABLE_VIRTUAL_TERMINAL_INPUT ));
 
     linedit_setutf8();
 #else 
@@ -144,7 +147,6 @@ void linedit_getterminalwidth(lineditor* edit) {
 #endif
 }
 
-
 /* ----------------------------------------
  * Detect if keypresses are available
  * ---------------------------------------- */
@@ -161,6 +163,16 @@ bool linedit_keypressavailable(void) {
     struct timeval timeout={ .tv_sec=0, .tv_usec=0 };
     
     return (select(1, &readfds, NULL, NULL, &timeout)>0);
+#endif
+}
+
+/** Read a single character from the terminal */
+bool linedit_getchar(char* out) {
+#ifdef _WIN32
+    *out = _getch();
+    return true;
+#else 
+    return fread(out, sizeof(char), 1, stdin) == 1
 #endif
 }
 
@@ -1184,10 +1196,12 @@ typedef struct {
 
 /** Raw codes produced by the terminal */
 enum keycodes {
-    TAB_CODE = 9,      // Tab
-    RETURN_CODE = 13,  // Enter or return
-    ESC_CODE = 27,     // Escape
-    DELETE_CODE = 127  // Delete
+    BACKSPACE_CODE = 8, // Backspace
+    TAB_CODE = 9,       // Tab
+    RETURN_CODE = 13,   // Enter or return
+    ESC_CODE = 27,      // Escape
+    DELETE_CODE = 127,  // Delete
+    ARROW_CODE = 224    // Windows arrow codes 
 };
 
 /** Enable this macro to get reports on unhandled keypresses */
@@ -1204,7 +1218,22 @@ void linedit_keypressinit(keypress *out) {
 bool linedit_readkey(lineditor *edit, keypress *out) {
     out->type=KEY_UNKNOWN;
     
-    if (fread(out->c, sizeof(char), 1, stdin)==1) {
+    if (linedit_getchar(out->c)) {
+#ifdef _WIN32
+        if (out->c[0] == -32) {
+            if (linedit_getchar(out->c)) {
+                bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+
+                switch (LINEDIT_KEYPRESSGETCHAR(out)) {
+                case 'H': out->type = KEY_UP; return true;
+                case 'P': out->type = KEY_DOWN; return true;
+                case 'M': out->type = (shift ? KEY_SHIFT_RIGHT : KEY_RIGHT); return true;
+                case 'K': out->type = (shift ? KEY_SHIFT_LEFT : KEY_LEFT); return true;
+                default: return false;
+                }
+            }
+        }
+#endif
         if (iscntrl(LINEDIT_KEYPRESSGETCHAR(out))) {
             switch (LINEDIT_KEYPRESSGETCHAR(out)) {
                 case ESC_CODE:
@@ -1213,8 +1242,8 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
                     
                     /* Read in the escape sequence */
                     for (unsigned int i=0; i<LINEDIT_CODESTRINGSIZE; i++) {
-                        size_t ret=fread(&seq[i], sizeof(char), 1, stdin);
-                        if (ret<1 || isalpha(seq[i])) break;
+                        if (!linedit_getchar(&seq[i]) ||
+                            isalpha(seq[i])) break;
                     }
                     
                     /** Decode the escape sequence */
@@ -1251,6 +1280,7 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
                 }
                     break;
                 case TAB_CODE:    out->type=KEY_TAB; break;
+                case BACKSPACE_CODE: // v fallthrough
                 case DELETE_CODE: out->type=KEY_DELETE; break;
                 case RETURN_CODE: out->type=KEY_RETURN; break;
                 default:
@@ -1271,8 +1301,7 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
             out->nbytes=linedit_utf8numberofbytes(out->c);
             /* Read in the unicode sequence */
             for (int i=1; i<out->nbytes; i++) {
-                size_t ret = fread(&out->c[i], sizeof(char), 1, stdin);
-                if (ret<1) break;
+                if (!linedit_getchar(&out->c[i])) break;
             }
             out->type=KEY_CHARACTER;
 #ifdef LINEDIT_DEBUGKEYPRESS
@@ -1612,7 +1641,8 @@ bool linedit_processkeypress(lineditor *edit) {
                         case 'P': /* Previous line */
                             linedit_processchangeline(edit, -1);
                             break;
-                        case 'V': /* Paste */
+                        case 'V': /* Paste */ // v fallthrough
+                        case 'Y': 
                             linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                             if (edit->clipboard.length>0) {
                                 linedit_stringinsert(&edit->current, edit->posn, edit->clipboard.string, edit->clipboard.length);
