@@ -273,6 +273,9 @@ int linedit_getwidth(lineditor *edit);
  *  @returns true if stdin and stdout are ttys */
 bool linedit_checktty(void);
 
+/** Enable UTF8 output */
+void linedit_setutf8(void);
+
 /** Initialize a line editor */
 void linedit_init(lineditor *edit);
 

@@ -318,6 +318,7 @@ void cli(clioptions opt) {
     version_tostring(&morphoversion, VERSION_MAXSTRINGLENGTH, morphoversionstring);
     
     if (tty) {
+        linedit_setutf8();
     #ifdef MORPHO_LONG_BANNER
         // Original ASCII art source - https://www.asciiart.eu/animals/insects/butterflies
         printf(BLU " ___   ___ \n" RESET);
@@ -328,7 +329,7 @@ void cli(clioptions opt) {
         printf("\U0001F98B morpho %s | \U0001F44B Type 'help' or '?' for help\n", morphoversionstring);
     #endif
     }
-    
+
     /* Set up program and compiler */
     program *p = morpho_newprogram();
     compiler *c = morpho_newcompiler(p);
@@ -368,7 +369,7 @@ void cli(clioptions opt) {
     
     /* Initialize the error struct */
     error_init(&err);
-    
+
     /* Read-evaluate-print loop */
     for (int n=0;;n++) {
         if (!tty && n>0) break;

@@ -24,14 +24,34 @@
  * ********************************************************************** */
 
 /* ----------------------------------------
- * Check if stdin or stdout are a tty
+ * Check terminal features
  * ---------------------------------------- */
 
+/** Check if stdin or stdout are a tty */
 bool linedit_isatty(void) {
 #ifdef _WIN32 
     return (_isatty(_fileno(stdin)) || _isatty(_fileno(stdout)));
 #else 
     return isatty(STDIN_FILENO) || isatty(STDOUT_FILENO);
+#endif
+}
+
+/** Get terminal name */
+bool linedit_terminalname(char *buffer, size_t size) {
+#ifdef _WIN32
+    strncpy(buffer, "win", size);
+    return true; 
+#else
+    char *term = getenv("TERM");
+    if (term) strncpy(buffer, term, size);
+    return term; 
+#endif
+}
+
+/** Enable UTF8 mode */
+void linedit_setutf8(void) {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
 #endif
 }
 
@@ -55,6 +75,8 @@ void linedit_enablerawmode(void) {
     DWORD mode;
     GetConsoleMode(hConsole, &mode);
     SetConsoleMode(hConsole, mode & ~ENABLE_PROCESSED_INPUT);
+
+    linedit_setutf8();
 #else 
     struct termios termraw; /* Use to set the raw state */
     if (!termexitregistered) {
@@ -183,15 +205,18 @@ typedef enum {
     LINEDIT_SUPPORTED
 } linedit_terminaltype;
 
+
+#define LINEDIT_TERMINALNAME_BUFFERSIZE 1024
+
 /** Checks whether the current terminal is supported */
 linedit_terminaltype linedit_checksupport(void) {
     /* Make sure both stdin and stdout are a tty */
     if (!linedit_isatty()) return LINEDIT_NOTTTY;
      
     char *unsupported[]={"dumb","cons25","emacs",NULL};
-    char *term = getenv("TERM");
-    
-    if (term == NULL) return LINEDIT_UNSUPPORTED;
+    char *term[LINEDIT_TERMINALNAME_BUFFERSIZE];
+    if (!linedit_terminalname(term, LINEDIT_TERMINALNAME_BUFFERSIZE)) return LINEDIT_UNSUPPORTED;
+
     for (unsigned int i=0; unsupported[i]!=NULL; i++) {
         if (!linedit_cstrcasecmp(term, unsupported[i])) return LINEDIT_UNSUPPORTED;
     }
