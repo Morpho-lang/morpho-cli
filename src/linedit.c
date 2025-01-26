@@ -6,66 +6,43 @@
 
 #include "linedit.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <conio.h>
+#else
+#include <termios.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#endif
+
 /** Maximum escape code size */
 #define LINEDIT_CODESTRINGSIZE 24
 
 /* **********************************************************************
- * Terminal
+ * Platform dependent code
  * ********************************************************************** */
 
 /* ----------------------------------------
- * Retrieve terminal type
+ * Check if stdin or stdout are a tty
  * ---------------------------------------- */
 
-void linedit_enablerawmode(void);
-void linedit_disablerawmode(void);
-
-typedef enum {
-    LINEDIT_NOTTTY,
-    LINEDIT_UNSUPPORTED,
-    LINEDIT_SUPPORTED
-} linedit_terminaltype;
-
-/** @brief   Compares two c strings independently of case
- *  @param[in] str1 - } strings to compare
- *  @param[in] str2 - }
- *  @returns 0 if the strings are identical, otherwise a positive or negative number indicating their lexographic order */
-int linedit_cstrcasecmp(char *str1, char *str2) {
-    if (str1 == str2) return 0;
-    int result=0;
-    
-    for (char *p1=str1, *p2=str2; result==0; p1++, p2++) {
-        result=tolower(*p1)-tolower(*p2);
-        if (*p1=='\0') break;
-    }
-    
-    return result;
-}
-
-/** Checks whether the current terminal is supported */
-linedit_terminaltype linedit_checksupport(void) {
-    /* Make sure both stdin and stdout are a tty */
-    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
-        return LINEDIT_NOTTTY;
-    }
-     
-    char *unsupported[]={"dumb","cons25","emacs",NULL};
-    char *term = getenv("TERM");
-    
-    if (term == NULL) return LINEDIT_UNSUPPORTED;
-    for (unsigned int i=0; unsupported[i]!=NULL; i++) {
-        if (!linedit_cstrcasecmp(term, unsupported[i])) return LINEDIT_UNSUPPORTED;
-    }
-    
-    return LINEDIT_SUPPORTED;
+bool linedit_isatty(void) {
+#ifdef _WIN32 
+    return (_isatty(_fileno(stdin)) || _isatty(_fileno(stdout)));
+#else 
+    return isatty(STDIN_FILENO) || isatty(STDOUT_FILENO);
+#endif
 }
 
 /* ----------------------------------------
  * Switch to/from raw mode
  * ---------------------------------------- */
 
+#ifndef _WIN32
 /** Holds the original terminal state */
 struct termios terminit;
+#endif
 
 bool termexitregistered=false;
 
@@ -73,6 +50,12 @@ bool termexitregistered=false;
  *  @details In raw mode key presses are passed directly to us rather than
  *           being buffered. */
 void linedit_enablerawmode(void) {
+#ifdef _WIN32
+    HANDLE hConsole = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode;
+    GetConsoleMode(hConsole, &mode);
+    SetConsoleMode(hConsole, mode & ~ENABLE_PROCESSED_INPUT);
+#else 
     struct termios termraw; /* Use to set the raw state */
     if (!termexitregistered) {
         atexit(linedit_disablerawmode);
@@ -100,12 +83,120 @@ void linedit_enablerawmode(void) {
     termraw.c_cc[VMIN] = 1; termraw.c_cc[VTIME] = 0; /* 1 byte, no timer */
     
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &termraw);
+#endif
 }
 
 /** @brief Restore terminal state to normal */
 void linedit_disablerawmode(void) {
+#ifdef _WIN32
+    HANDLE hConsole = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode;
+    GetConsoleMode(hConsole, &mode);
+    SetConsoleMode(hConsole, mode | ENABLE_PROCESSED_INPUT);
+#else 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminit);
+#endif
     printf("\r"); /** Print a carriage return to ensure we're back on the left hand side */
+}
+
+/** @brief Gets the terminal width */
+void linedit_getterminalwidth(lineditor* edit) {
+    edit->ncols = 80;
+#ifdef _WIN32
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+
+    if (GetConsoleScreenBufferInfo(h, &csbi)) {
+        edit->ncols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    }
+#else 
+    struct winsize ws;
+
+    /* Try ioctl first */
+    if (!(ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)) {
+        edit->ncols = ws.ws_col;
+    }
+    else {
+        // Should get cursor position etc here.
+    }
+#endif
+}
+
+
+/* ----------------------------------------
+ * Detect if keypresses are available
+ * ---------------------------------------- */
+
+/** Detect if a keypress is available; non-blocking */
+bool linedit_keypressavailable(void) {
+#ifdef _WIN32
+    return _kbhit();
+#else 
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+    
+    struct timeval timeout={ .tv_sec=0, .tv_usec=0 };
+    
+    return (select(1, &readfds, NULL, NULL, &timeout)>0);
+#endif
+}
+
+/* **********************************************************************
+ * Terminal
+ * ********************************************************************** */
+
+/** @brief   Compares two c strings independently of case
+ *  @param[in] str1 - } strings to compare
+ *  @param[in] str2 - }
+ *  @returns 0 if the strings are identical, otherwise a positive or negative number indicating their lexographic order */
+int linedit_cstrcasecmp(char *str1, char *str2) {
+    if (str1 == str2) return 0;
+    int result=0;
+    
+    for (char *p1=str1, *p2=str2; result==0; p1++, p2++) {
+        result=tolower(*p1)-tolower(*p2);
+        if (*p1=='\0') break;
+    }
+    
+    return result;
+}
+
+#ifdef _WIN32
+char *strndup(const char *s, size_t n) {
+    char *out = malloc(n+1);
+    if (out) {
+        memcpy(out, s, n);
+        out[n]='\0';
+    }
+    return out; 
+} 
+#endif 
+
+/* ----------------------------------------
+ * Retrieve terminal type
+ * ---------------------------------------- */
+
+typedef enum {
+    LINEDIT_NOTTTY,
+    LINEDIT_UNSUPPORTED,
+    LINEDIT_SUPPORTED
+} linedit_terminaltype;
+
+/** Checks whether the current terminal is supported */
+linedit_terminaltype linedit_checksupport(void) {
+    /* Make sure both stdin and stdout are a tty */
+    if (!linedit_isatty()) return LINEDIT_NOTTTY;
+     
+    char *unsupported[]={"dumb","cons25","emacs",NULL};
+    char *term = getenv("TERM");
+    
+    if (term == NULL) return LINEDIT_UNSUPPORTED;
+    for (unsigned int i=0; unsupported[i]!=NULL; i++) {
+        if (!linedit_cstrcasecmp(term, unsupported[i])) return LINEDIT_UNSUPPORTED;
+    }
+    
+    return LINEDIT_SUPPORTED;
 }
 
 /* ----------------------------------------
@@ -119,11 +210,11 @@ bool linedit_getcursorposition(int *x, int *y) {
     int i=0, row=0, col=0;
 
     /* Report cursor location */
-    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return false;
+    if (fwrite("\x1b[6n", sizeof(char), 4, stdout) != 4) return false;
 
     /* Read the response: ESC [ rows ; cols R */
     while (i < sizeof(answer)-1) {
-        if (read(STDIN_FILENO,answer+i,1) != 1) break;
+        if (fread(answer+i, sizeof(char), 1, stdin)<1) break;
         if (answer[i] == 'R') break; // Response is 'R' terminated
         i++;
     }
@@ -138,35 +229,6 @@ bool linedit_getcursorposition(int *x, int *y) {
     return true;
 }
 
-/** @brief Gets the terminal width */
-void linedit_getterminalwidth(lineditor *edit) {
-    struct winsize ws;
-    
-    edit->ncols=80;
-    
-    /* Try ioctl first */
-    if (!(ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0)) {
-        edit->ncols=ws.ws_col;
-    } else {
-        // Should get cursor position etc here.
-    }
-}
-
-/* ----------------------------------------
- * Detect if keypresses are available
- * ---------------------------------------- */
-
-/** Detect if a keypress is available; non-blocking */
-bool linedit_keypressavailable(void) {
-    fd_set readfds;
-    FD_ZERO(&readfds);
-    FD_SET(STDIN_FILENO, &readfds);
-    
-    struct timeval timeout={ .tv_sec=0, .tv_usec=0 };
-    
-    return (select(1, &readfds, NULL, NULL, &timeout)>0);
-}
-
 /* ----------------------------------------
  * Output
  * ---------------------------------------- */
@@ -174,7 +236,7 @@ bool linedit_keypressavailable(void) {
 /** @brief Writes a string to the terminal */
 bool linedit_write(char *string) {
     size_t length=strlen(string);
-    if (write(STDOUT_FILENO, string, length)==-1) {
+    if (fwrite(string, sizeof(char), length, stdout)<length) {
         fprintf(stderr, "Error writing to terminal.\n");
         return false;
     }
@@ -183,7 +245,7 @@ bool linedit_write(char *string) {
 
 /** @brief Writes a character to the terminal */
 bool linedit_writechar(char c) {
-    if (write(STDOUT_FILENO, &c, 1)==-1) {
+    if (fwrite(&c, sizeof(char), 1, stdout)<1) {
         fprintf(stderr, "Error writing to terminal.\n");
         return false;
     }
@@ -459,7 +521,7 @@ bool linedit_graphemedisplaywidth(lineditor *edit, char *grapheme, size_t length
 bool linedit_graphememeasurewidth(lineditor *edit, char *grapheme, size_t length, int *width) {
     int x0=0, x1=0, w=0;
     linedit_getcursorposition(&x0, NULL);
-    write(STDOUT_FILENO, grapheme, length);
+    if (fwrite(grapheme, sizeof(char), length, stdout)<length) return false; 
     linedit_getcursorposition(&x1, NULL);
     w=(x1>x0 ? x1-x0 : 1);
     *width = w;
@@ -480,11 +542,11 @@ void linedit_renderstring(lineditor *edit, char *string, size_t length, int l, i
         if (!len) break;
         
         if (*s=='\r') { // Reset on a carriage return
-            if (write(STDOUT_FILENO, "\r" , 1)==-1) return;
+            if (fwrite("\r", sizeof(char), 1, stdout)<1) return;
             i=0;
         } else if (*s=='\n') { // Clear to end of line and return
             if (!linedit_write("\x1b[K\n\r")) return;
-            if (write(STDOUT_FILENO, edit->cprompt.string, edit->cprompt.length)==-1) return;
+            if (fwrite(edit->cprompt.string, sizeof(char), edit->cprompt.length, stdout)<edit->cprompt.length) return;
             i=0;
         } else if (*s=='\t') {
             if (!linedit_write(" ")) return;
@@ -493,7 +555,8 @@ void linedit_renderstring(lineditor *edit, char *string, size_t length, int l, i
             if (*s=='\033') { // A terminal control character
                 char *ctl=s; // First identify its length
                 while (!isalpha(*ctl) && *ctl!='\0') ctl++;
-                if (write(STDOUT_FILENO, s, ctl-s+1)==-1) return; // print it
+                size_t len = ctl-s+1;
+                if (fwrite(s, sizeof(char), len, stdout)<len) return;
                 s=ctl;
             }
         } else { // Otherwise show printable characters that lie within the window
@@ -501,7 +564,7 @@ void linedit_renderstring(lineditor *edit, char *string, size_t length, int l, i
             if (!linedit_graphemedisplaywidth(edit, s, len, &width)) {
                 linedit_graphememeasurewidth(edit, s, len, &width);
             } else if (i>=l && i<r) {
-                if (write(STDOUT_FILENO, s, len)==-1) return;
+                if (fwrite(s, sizeof(char), len, stdout)<len) return;
             }
             i+=1;
         }
@@ -1027,7 +1090,6 @@ void linedit_syntaxcolorstring(lineditor *edit, linedit_string *in, linedit_stri
     linedit_color col=LINEDIT_DEFAULTCOLOR;
     linedit_token tok;
     unsigned int iter=0;
-    int line=0;
     
     for (char *c=in->string; c!=NULL && *c!='\0';) {
         bool success = (tokenizer) (c, edit->color->tokref, &tok);
@@ -1076,12 +1138,12 @@ void linedit_plainstring(lineditor *edit, linedit_string *in, linedit_string *ou
 
 /** Identifies the type of keypress */
 typedef enum {
-    UNKNOWN, CHARACTER,
-    RETURN, TAB, DELETE,
-    UP, DOWN, LEFT, RIGHT,   // Arrow keys
-    HOME, END,               // Home and End
-    SHIFT_LEFT, SHIFT_RIGHT, // Shift+arrow key
-    CTRL,
+    KEY_UNKNOWN, KEY_CHARACTER,
+    KEY_RETURN, KEY_TAB, KEY_DELETE,
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT,   // Arrow keys
+    KEY_HOME, KEY_END,               // Home and End
+    KEY_SHIFT_LEFT, KEY_SHIFT_RIGHT, // Shift+arrow key
+    KEY_CTRL,
 } keytype;
 
 /** A single keypress event obtained and processed by the terminal */
@@ -1106,36 +1168,35 @@ enum keycodes {
 
 /** Initializes a keypress structure */
 void linedit_keypressinit(keypress *out) {
-    out->type=UNKNOWN;
+    out->type=KEY_UNKNOWN;
     for (int i=0; i<5; i++) out->c[i]='\0';
     out->nbytes=0;
 }
 
 /** @brief Read and decode a single keypress from the terminal */
 bool linedit_readkey(lineditor *edit, keypress *out) {
-    out->type=UNKNOWN;
+    out->type=KEY_UNKNOWN;
     
-    if (read(STDIN_FILENO, out->c, 1) == 1) {
+    if (fread(out->c, sizeof(char), 1, stdin)==1) {
         if (iscntrl(LINEDIT_KEYPRESSGETCHAR(out))) {
             switch (LINEDIT_KEYPRESSGETCHAR(out)) {
                 case ESC_CODE:
                 {   /* Escape sequences */
                     char seq[LINEDIT_CODESTRINGSIZE];
-                    ssize_t ret=0;
                     
                     /* Read in the escape sequence */
                     for (unsigned int i=0; i<LINEDIT_CODESTRINGSIZE; i++) {
-                        ret=read(STDIN_FILENO, &seq[i], 1);
-                        if (ret<0 || isalpha(seq[i])) break;
+                        size_t ret=fread(&seq[i], sizeof(char), 1, stdin);
+                        if (ret<1 || isalpha(seq[i])) break;
                     }
                     
                     /** Decode the escape sequence */
                     if (seq[0]=='[') {
                         if (isdigit(seq[1])) { /* Extended seqence */
                             if (strncmp(seq, "[1;2C", 5)==0) {
-                                out->type=SHIFT_RIGHT;
+                                out->type=KEY_SHIFT_RIGHT;
                             } else if (strncmp(seq, "[1;2D", 5)==0) {
-                                out->type=SHIFT_LEFT;
+                                out->type=KEY_SHIFT_LEFT;
                             } else {
 #ifdef LINEDIT_DEBUGKEYPRESS
                                 printf("Extended escape sequence: ");
@@ -1148,10 +1209,10 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
                             }
                         } else {
                             switch (seq[1]) {
-                                case 'A': out->type=UP; break;
-                                case 'B': out->type=DOWN; break;
-                                case 'C': out->type=RIGHT; break;
-                                case 'D': out->type=LEFT; break;
+                                case 'A': out->type=KEY_UP; break;
+                                case 'B': out->type=KEY_DOWN; break;
+                                case 'C': out->type=KEY_RIGHT; break;
+                                case 'D': out->type=KEY_LEFT; break;
                                 default:
 #ifdef LINEDIT_DEBUGKEYPRESS
                                     printf("Unhandled escape sequence: %c%c%c\r\n", seq[0], seq[1], seq[2]);
@@ -1162,12 +1223,12 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
                     }
                 }
                     break;
-                case TAB_CODE:    out->type=TAB; break;
-                case DELETE_CODE: out->type=DELETE; break;
-                case RETURN_CODE: out->type=RETURN; break;
+                case TAB_CODE:    out->type=KEY_TAB; break;
+                case DELETE_CODE: out->type=KEY_DELETE; break;
+                case RETURN_CODE: out->type=KEY_RETURN; break;
                 default:
-                    if (LINEDIT_KEYPRESSGETCHAR(out)>0 && LINEDIT_KEYPRESSGETCHAR(out)<27) { /* Ctrl+character */
-                        out->type=CTRL;
+                    if (LINEDIT_KEYPRESSGETCHAR(out)>0 && LINEDIT_KEYPRESSGETCHAR(out)<27) { /* Ctrl+KEY_KEY_CHARACTER */
+                        out->type=KEY_CTRL;
                         out->c[0]+='A'-1; /* Return the character code */
 #ifdef LINEDIT_DEBUGKEYPRESS
                         printf("Ctrl+character: %c\r\n", out->c[0]);
@@ -1182,12 +1243,11 @@ bool linedit_readkey(lineditor *edit, keypress *out) {
         } else {
             out->nbytes=linedit_utf8numberofbytes(out->c);
             /* Read in the unicode sequence */
-            ssize_t ret=0;
             for (int i=1; i<out->nbytes; i++) {
-                ret=read(STDIN_FILENO, &out->c[i], 1);
-                if (ret<0) break;
+                size_t ret = fread(&out->c[i], sizeof(char), 1, stdin);
+                if (ret<1) break;
             }
-            out->type=CHARACTER;
+            out->type=KEY_CHARACTER;
 #ifdef LINEDIT_DEBUGKEYPRESS
             printf("Character: %s (%i bytes)\r\n", out->c, out->nbytes);
 #endif
@@ -1397,12 +1457,12 @@ bool linedit_processkeypress(lineditor *edit) {
     do {
         if (linedit_readkey(edit, &key)) {
             switch (key.type) {
-                case CHARACTER:
+                case KEY_CHARACTER:
                     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                     linedit_stringinsert(&edit->current, edit->posn, key.c, key.nbytes);
                     linedit_advanceposition(edit, 1);
                     break;
-                case DELETE:
+                case KEY_DELETE:
                     if (linedit_getmode(edit)==LINEDIT_SELECTIONMODE) {
                         /* Delete the selection */
                         int lposn=(edit->sposn < edit->posn ? edit->sposn : edit->posn);
@@ -1418,19 +1478,19 @@ bool linedit_processkeypress(lineditor *edit) {
                     }
                     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                     break;
-                case LEFT:
+                case KEY_LEFT:
                     linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, -1);
                     break;
-                case RIGHT:
+                case KEY_RIGHT:
                     linedit_processarrowkeypress(edit, LINEDIT_DEFAULTMODE, +1);
                     break;
-                case SHIFT_LEFT:
+                case KEY_SHIFT_LEFT:
                     linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, -1);
                     break;
-                case SHIFT_RIGHT:
+                case KEY_SHIFT_RIGHT:
                     linedit_processarrowkeypress(edit, LINEDIT_SELECTIONMODE, +1);
                     break;
-                case UP:
+                case KEY_UP:
                 {
                     if (linedit_getmode(edit)!=LINEDIT_HISTORYMODE) {
                         linedit_setmode(edit, LINEDIT_HISTORYMODE);
@@ -1441,7 +1501,7 @@ bool linedit_processkeypress(lineditor *edit) {
                     linedit_setposition(edit, -1);
                 }
                     break;
-                case DOWN:
+                case KEY_DOWN:
                     if (linedit_getmode(edit)==LINEDIT_HISTORYMODE) {
                         linedit_historyadvance(edit, -1);
                         linedit_setposition(edit, -1);
@@ -1450,13 +1510,13 @@ bool linedit_processkeypress(lineditor *edit) {
                         regeneratesuggestions=false;
                     }
                     break;
-                case RETURN:
+                case KEY_RETURN:
                     if (linedit_shouldmultiline(edit)) {
                         linedit_stringaddcstring(&edit->current, "\n");
                         linedit_advanceposition(edit, +1);
                     } else return false;
                     break;
-                case TAB:
+                case KEY_TAB:
                     linedit_setmode(edit, LINEDIT_DEFAULTMODE);
                     /* If suggestions are available (i.e. we're at the end of the line)... */
                     if (linedit_aresuggestionsavailable(edit)) {
@@ -1470,7 +1530,7 @@ bool linedit_processkeypress(lineditor *edit) {
                         linedit_advanceposition(edit, +1);
                     }
                     break;
-                case CTRL: /* Handle ctrl+letter combos */
+                case KEY_CTRL: /* Handle ctrl+letter combos */
                     switch(LINEDIT_KEYPRESSGETCHAR(&key)) {
                         case 'A': /* Move to start of line */
                         {

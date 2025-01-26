@@ -6,11 +6,16 @@
 
 #include <string.h>
 #include <ctype.h>
-#include <dirent.h>
 
 #include <morpho.h>
+#include <object.h>
 #include <common.h>
 #include <resources.h>
+
+#ifdef _WIN32
+__declspec(dllimport) extern objecttype objectstringtype; 
+__declspec(dllimport) extern objecttype objectlisttype; 
+#endif
 
 #include "help.h"
 

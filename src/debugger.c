@@ -12,6 +12,10 @@
 
 #include "debugger.h"
 
+#ifdef _WIN32
+__declspec(dllimport) extern objecttype objectstringtype; 
+#endif
+
 /** @brief Debugger front end
  *
  * @details The debugger front end is implemented using the new lexer and parser:
