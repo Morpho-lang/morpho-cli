@@ -30,7 +30,7 @@
 /** Check if stdin or stdout are a tty */
 bool linedit_isatty(void) {
 #ifdef _WIN32 
-    return (_isatty(_fileno(stdin)) || _isatty(_fileno(stdout)));
+    return (_isatty(_fileno(stdin)) && _isatty(_fileno(stdout)));
 #else 
     return isatty(STDIN_FILENO) || isatty(STDOUT_FILENO);
 #endif
