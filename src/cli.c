@@ -450,6 +450,8 @@ void cli_run(const char *in, clioptions opt) {
     if (src) cli_globalsrc = src;
     
     error err; /* Error structure that received messages from the compiler and VM */
+    error_init(&err);
+
     bool success=false; /* Keep track of whether compilation and execution was successful */
     
     /* Open the input file if provided */
