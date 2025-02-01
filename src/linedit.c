@@ -66,6 +66,8 @@ struct termios terminit;
 
 bool termexitregistered=false;
 
+void linedit_disablerawmode(void);
+
 /** @brief Enables 'raw' mode in the terminal
  *  @details In raw mode key presses are passed directly to us rather than
  *           being buffered. */
@@ -172,7 +174,7 @@ bool linedit_getchar(char* out) {
     *out = _getch();
     return true;
 #else 
-    return fread(out, sizeof(char), 1, stdin) == 1
+    return fread(out, sizeof(char), 1, stdin) == 1;
 #endif
 }
 
@@ -226,7 +228,7 @@ linedit_terminaltype linedit_checksupport(void) {
     if (!linedit_isatty()) return LINEDIT_NOTTTY;
      
     char *unsupported[]={"dumb","cons25","emacs",NULL};
-    char *term[LINEDIT_TERMINALNAME_BUFFERSIZE];
+    char term[LINEDIT_TERMINALNAME_BUFFERSIZE];
     if (!linedit_terminalname(term, LINEDIT_TERMINALNAME_BUFFERSIZE)) return LINEDIT_UNSUPPORTED;
 
     for (unsigned int i=0; unsupported[i]!=NULL; i++) {
