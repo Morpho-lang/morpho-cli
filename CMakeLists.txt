@@ -50,7 +50,7 @@ endforeach()
 find_library(MORPHO_LIBRARY
     NAMES morpho libmorpho
     HINTS
-    "C:/Program Files/Morpho/lib" 
+    "C:/Program Files/Morpho/lib/" 
 )
 
 target_link_libraries(morpho6 ${MORPHO_LIBRARY})

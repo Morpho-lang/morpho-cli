@@ -27,7 +27,7 @@
  * Check terminal features
  * ---------------------------------------- */
 
-/** Check if stdin or stdout are a tty */
+/** Check if stdin and stdout are a tty */
 bool linedit_isatty(void) {
 #ifdef _WIN32 
     return (_isatty(_fileno(stdin)) && _isatty(_fileno(stdout)));
@@ -59,8 +59,10 @@ void linedit_setutf8(void) {
  * Switch to/from raw mode
  * ---------------------------------------- */
 
-#ifndef _WIN32
-/** Holds the original terminal state */
+/** Hold the original terminal state */
+#ifdef _WIN32
+DWORD terminit;
+#else
 struct termios terminit;
 #endif
 
@@ -74,9 +76,8 @@ void linedit_disablerawmode(void);
 void linedit_enablerawmode(void) {
 #ifdef _WIN32
     HANDLE hConsole = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD mode;
-    GetConsoleMode(hConsole, &mode);
-    SetConsoleMode(hConsole, (mode & ~(ENABLE_LINE_INPUT |
+    GetConsoleMode(hConsole, &terminit);
+    SetConsoleMode(hConsole, (terminit & ~(ENABLE_LINE_INPUT |
                                       ENABLE_ECHO_INPUT | 
                                       ENABLE_PROCESSED_INPUT) |
                                       ENABLE_VIRTUAL_TERMINAL_INPUT ));
@@ -84,10 +85,6 @@ void linedit_enablerawmode(void) {
     linedit_setutf8();
 #else 
     struct termios termraw; /* Use to set the raw state */
-    if (!termexitregistered) {
-        atexit(linedit_disablerawmode);
-        termexitregistered=true;
-    }
     
     tcgetattr(STDIN_FILENO, &terminit); /** Get the original state*/
     
@@ -111,15 +108,17 @@ void linedit_enablerawmode(void) {
     
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &termraw);
 #endif
+    if (!termexitregistered) {
+        atexit(linedit_disablerawmode);
+        termexitregistered=true;
+    }
 }
 
 /** @brief Restore terminal state to normal */
 void linedit_disablerawmode(void) {
 #ifdef _WIN32
     HANDLE hConsole = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD mode;
-    GetConsoleMode(hConsole, &mode);
-    SetConsoleMode(hConsole, mode | ENABLE_PROCESSED_INPUT);
+    SetConsoleMode(hConsole, terminit);
 #else 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &terminit);
 #endif
