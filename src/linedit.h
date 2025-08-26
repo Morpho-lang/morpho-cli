@@ -14,10 +14,6 @@
 #include <string.h>
 #include <stdint.h>
 
-#include <termios.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-
 /* **********************************************************************
  * Types
  * ********************************************************************** */
@@ -276,6 +272,9 @@ int linedit_getwidth(lineditor *edit);
 /** @brief Checks whether the underlying terminal is a TTY 
  *  @returns true if stdin and stdout are ttys */
 bool linedit_checktty(void);
+
+/** Enable UTF8 output */
+void linedit_setutf8(void);
 
 /** Initialize a line editor */
 void linedit_init(lineditor *edit);

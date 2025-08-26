@@ -4,3 +4,4 @@ build-xcode/*
 .DS_Store
 .vscode/*
 .vscode/settings.json
+/.vscode
