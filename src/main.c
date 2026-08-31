@@ -64,6 +64,7 @@ static bool opt_help(const char *opt, const char *arg, clioptions *flags, opt_ct
     printf("  -O, --optimize          Enable optimizations\n");
     printf("  -profile, --profile     Enable profiling\n");
     printf("  --no-color              Disable syntax highlighting\n");
+    printf("  --no-hints              Disable hint output\n");
     printf("  -w, --workers <n>       Set number of worker threads\n");
     printf("\nIf no file is specified, morpho enters interactive REPL mode.\n");
     printf("If stdin is piped or redirected, morpho reads and executes from stdin.\n");
@@ -124,6 +125,12 @@ static bool opt_workers(const char *opt, const char *arg, clioptions *flags, opt
 static bool opt_nocolor(const char *opt, const char *arg, clioptions *flags, opt_ctx *ctx) {
     (void)opt; (void)arg; (void)ctx;
     *flags |= CLI_NOCOLOR;
+    return true;
+}
+
+static bool opt_nohints(const char *opt, const char *arg, clioptions *flags, opt_ctx *ctx) {
+    (void)opt; (void)arg; (void)ctx;
+    *flags |= CLI_NOHINTS;
     return true;
 }
 
@@ -191,6 +198,7 @@ static const option_t opt_table[] = {
     { "-O",       "--optimize",    false, opt_optimize },
     { "-profile", "--profile",     false, opt_profile },
     { NULL,       "--no-color",    false, opt_nocolor },
+    { NULL,       "--no-hints",    false, opt_nohints },
     { "-v",       "--version",     false, opt_version },
     { "-w",       "--workers",     true,  opt_workers },
     { NULL,       NULL,            false, NULL },

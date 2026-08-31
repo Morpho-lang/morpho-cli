@@ -17,6 +17,7 @@
 #define CLI_DEFAULTCOLOR -1
 #define CLI_ERRORCOLOR  INLINE_RED
 #define CLI_WARNINGCOLOR  INLINE_YELLOW
+#define CLI_HINTCOLOR  8 // This should be an inline color macro 'INLINE_BRIGHTBLACK' but that is yet to exist atm
 
 #define CLI_NOEMPHASIS  -1
 #define CLI_BOLD        0
@@ -37,6 +38,7 @@
 #define CLI_PROFILE             (1<<5)
 #define CLI_INTERACTIVE         (1<<6)
 #define CLI_NOCOLOR             (1<<7)
+#define CLI_NOHINTS             (1<<8)
 
 typedef unsigned int clioptions;
 

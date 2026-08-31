@@ -56,6 +56,10 @@ bool cli_usecolor(void) {
     return inline_checksupported();
 }
 
+bool cli_showhints(void) {
+    return !(s_cli_activeopt & CLI_NOHINTS);
+}
+
 #define CLI_BUFFERSIZE 4096
 
 #define RESET      "\x1B[0m"
@@ -120,6 +124,14 @@ void cli_reporterror(error *err, vm *v) {
             
             cli_displaywithstyle(CLI_ERRORCOLOR, CLI_NOEMPHASIS, 3, ": ", err->msg, "\n");
         }
+#ifdef MORPHO_INCLUDE_HINT
+        if (err->hnt) { // Display the hint attached to the error
+            if (cli_showhints()) {
+                cli_displaywithstyle(CLI_HINTCOLOR, CLI_NOEMPHASIS, 3, "Hint: ", err->hnt->msg, "\n");
+            }
+            hint_free(&err->hnt);
+        }
+#endif
     }
 }
 
@@ -331,6 +343,7 @@ bool cli_syntaxcolorfn(const char *in, void *ref, size_t offset, inline_colorspa
     }
     
     if (tok.type==TOKEN_EOF) lex_clear(l);
+    error_clear(&err);
     
     return success;
 }
@@ -788,6 +801,7 @@ void cli_helpquery(const char *query, clioptions opt) {
     char *q = query ? (char *) query : (char *) "";
     if (!cli_help(edit, q, &err, help)) cli_setexitcode(EXIT_FAILURE);
     hlp_finalize();
+    error_clear(&err);
     inline_free(edit);
 }
 
