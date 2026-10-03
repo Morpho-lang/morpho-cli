@@ -59,9 +59,11 @@ To install, clone this repository:
 
 and then,
 
-    cd morpho-cli 
+    cd morpho-cli
     cmake -S . -B build
     cmake --build build --config Release
     sudo cmake --install build --config Release
 
-This manual build installs into '/usr/local/bin' by default.
+This installs `morpho6` into `/usr/local/bin` by default. For a Morpho install outside the standard prefixes, pass that prefix:
+
+    cmake -S . -B build -DCMAKE_PREFIX_PATH="/path/to/morpho"

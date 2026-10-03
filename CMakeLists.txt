@@ -2,11 +2,13 @@
 # Morpho-cli/CMakeLists.txt
 #-------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.20)
 
-# Single-config generators (Unix Makefiles, Ninja) default to an empty
-# CMAKE_BUILD_TYPE, which means no -O3. Multi-config generators (Xcode, VS)
-# ignore CMAKE_BUILD_TYPE; --config selects the variant at build time.
+project(morpho-cli LANGUAGES C)
+
+include(GNUInstallDirs)
+
+# Default to Release when the generator has a single build type.
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "CMAKE_BUILD_TYPE unset; defaulting to Release")
     set(CMAKE_BUILD_TYPE Release CACHE STRING
@@ -15,134 +17,75 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
 endif()
 
-project(morpho-cli)
-
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 add_executable(morpho6 "")
 
-#-------------------------------------------------------------------------------
-# Release LTO
-#-------------------------------------------------------------------------------
+find_package(morpho CONFIG REQUIRED)
+target_link_libraries(morpho6 PRIVATE morpho::morpho)
 
-include(CheckIPOSupported)
-check_ipo_supported(RESULT MORPHO_IPO_SUPPORTED OUTPUT MORPHO_IPO_OUTPUT LANGUAGES C)
-if(MORPHO_IPO_SUPPORTED)
-    set_property(TARGET morpho6 PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        set_property(TARGET morpho6 PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    endif()
-    message(STATUS "IPO/LTO enabled for Release")
-else()
-    message(STATUS "IPO/LTO not enabled (${MORPHO_IPO_OUTPUT})")
-endif() 
-
-#-------------------------------------------------------------------------------
-# Process options
-#-------------------------------------------------------------------------------
-
-# Option to disable NAN Boxing
-if(MORPHO_DISABLENANBOXING)
-target_compile_definitions(morpho6 PUBLIC _NO_NAN_BOXING)
-endif() 
-
-#-------------------------------------------------------------------------------
-# Include the morpho library
-#-------------------------------------------------------------------------------
-
-# Locate the morpho.h header file and store in MORPHO_HEADER
-find_file(MORPHO_HEADER
-          morpho.h 
-          HINTS 
-          /usr/local/include/
-          /usr/local/include/morpho
-          /opt/homebrew/include/
-          /opt/homebrew/include/morpho
-          /home/linuxbrew/.linuxbrew/include/
-          /home/linuxbrew/.linuxbrew/include/morpho
-          "C:/Program Files/Morpho/include/morpho"
-          )
-
-message(STATUS "Found morpho.h at ${MORPHO_HEADER}")
-
-# Identify folder that morpho.h is located in from MORPHO_HEADER and store in MORPHO_INCLUDE
-get_filename_component(MORPHO_INCLUDE ${MORPHO_HEADER} DIRECTORY)
-
-# Add morpho headers to MORPHO_INCLUDE
-target_include_directories(morpho6 PUBLIC ${MORPHO_INCLUDE})
-message(STATUS "Including directory ${MORPHO_INCLUDE}")
-
-# Add morpho headers in subfolders to MORPHO_INCLUDE
-file(GLOB morpho_subdirectories LIST_DIRECTORIES true ${MORPHO_INCLUDE}/*)
-foreach(dir ${morpho_subdirectories})
-    IF(IS_DIRECTORY ${dir})
-        target_include_directories(morpho6 PUBLIC ${dir})
-        message(STATUS "Including directory ${dir}")
-    ELSE()
-        CONTINUE()
-    ENDIF()
-endforeach()
-
-# Locate libmorpho
-find_library(MORPHO_LIBRARY
-    NAMES morpho libmorpho
-    HINTS
-    "C:/Program Files/Morpho/lib/" 
-)
-
-target_link_libraries(morpho6 ${MORPHO_LIBRARY})
-
-#-------------------------------------------------------------------------------
-# Locate grapheme splitting library
-#-------------------------------------------------------------------------------
-
-# Try to find a grapheme splitting library
-unset(GRAPHEME_LIBRARY CACHE)
-
-# First, try to locate libgrapheme
-find_library(GRAPHEME_LIBRARY
-    NAMES grapheme libgrapheme
-)
-
-# Find grapheme.h header file 
-find_file(GRAPHEME_HEADER grapheme.h 
-          HINTS 
-            /usr/local/include
-            /opt/homebrew/include/
-            /home/linuxbrew/.linuxbrew/include/)
-
-if(GRAPHEME_LIBRARY)
-    message("-- Found libgrapheme for grapheme splitting.")
-    add_definitions( -DCLI_USELIBGRAPHEME )
-else()
-    # Locate libunistring
-    find_library(GRAPHEME_LIBRARY
-        NAMES unistring libunistring
-    )
-
-    # Find unigbrk.h header file 
-    find_file(GRAPHEME_HEADER unigbrk.h 
-            HINTS 
-                /usr/local/include
-                /opt/homebrew/include/
-                /home/linuxbrew/.linuxbrew/include/)
-
-    if(GRAPHEME_LIBRARY)
-        message("-- Found libunistring for grapheme splitting.")
-        add_definitions( -DCLI_USELIBUNISTRING )
-    endif() 
-endif() 
-
-# Identify folder that the grapheme library is located in from GRAPHEME_HEADER and store in GRAPHEME_INCLUDE
-get_filename_component(GRAPHEME_INCLUDE ${GRAPHEME_HEADER} DIRECTORY)
-
-# Link the grapheme library if provided
-if(GRAPHEME_LIBRARY)
-    target_include_directories(morpho6 PUBLIC ${GRAPHEME_INCLUDE})
-    target_link_libraries(morpho6 ${GRAPHEME_LIBRARY})
-else() 
-    message("!! No grapheme splitting library found")
+# Copy morpho.dll next to the executable.
+get_target_property(_morpho_type morpho::morpho TYPE)
+if(WIN32 AND _morpho_type STREQUAL "SHARED_LIBRARY")
+    add_custom_command(TARGET morpho6 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:morpho::morpho>
+                $<TARGET_FILE_DIR:morpho6>
+        VERBATIM)
 endif()
+unset(_morpho_type)
+
+#-------------------------------------------------------------------------------
+# Optional grapheme splitting library
+#-------------------------------------------------------------------------------
+
+set(_cli_grapheme FALSE)
+
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(LIBGRAPHEME QUIET IMPORTED_TARGET libgrapheme)
+    if(TARGET PkgConfig::LIBGRAPHEME)
+        target_link_libraries(morpho6 PRIVATE PkgConfig::LIBGRAPHEME)
+        target_compile_definitions(morpho6 PRIVATE CLI_USELIBGRAPHEME)
+        set(_cli_grapheme TRUE)
+        message(STATUS "Found libgrapheme for grapheme splitting.")
+    else()
+        pkg_check_modules(LIBUNISTRING QUIET IMPORTED_TARGET libunistring)
+        if(TARGET PkgConfig::LIBUNISTRING)
+            target_link_libraries(morpho6 PRIVATE PkgConfig::LIBUNISTRING)
+            target_compile_definitions(morpho6 PRIVATE CLI_USELIBUNISTRING)
+            set(_cli_grapheme TRUE)
+            message(STATUS "Found libunistring for grapheme splitting.")
+        endif()
+    endif()
+endif()
+
+if(NOT _cli_grapheme)
+    find_path(GRAPHEME_INCLUDE NAMES grapheme.h)
+    find_library(GRAPHEME_LIBRARY NAMES grapheme libgrapheme)
+    if(GRAPHEME_INCLUDE AND GRAPHEME_LIBRARY)
+        target_include_directories(morpho6 PRIVATE ${GRAPHEME_INCLUDE})
+        target_link_libraries(morpho6 PRIVATE ${GRAPHEME_LIBRARY})
+        target_compile_definitions(morpho6 PRIVATE CLI_USELIBGRAPHEME)
+        set(_cli_grapheme TRUE)
+        message(STATUS "Found libgrapheme for grapheme splitting.")
+    else()
+        find_path(UNISTRING_INCLUDE NAMES unigbrk.h)
+        find_library(UNISTRING_LIBRARY NAMES unistring libunistring)
+        if(UNISTRING_INCLUDE AND UNISTRING_LIBRARY)
+            target_include_directories(morpho6 PRIVATE ${UNISTRING_INCLUDE})
+            target_link_libraries(morpho6 PRIVATE ${UNISTRING_LIBRARY})
+            target_compile_definitions(morpho6 PRIVATE CLI_USELIBUNISTRING)
+            set(_cli_grapheme TRUE)
+            message(STATUS "Found libunistring for grapheme splitting.")
+        endif()
+    endif()
+endif()
+
+if(NOT _cli_grapheme)
+    message(STATUS "No grapheme splitting library found")
+endif()
+unset(_cli_grapheme)
 
 #-------------------------------------------------------------------------------
 # Include source files
@@ -154,5 +97,4 @@ add_subdirectory(src)
 # Install targets
 #-------------------------------------------------------------------------------
 
-# Install the resulting binary
-install(TARGETS morpho6)
+install(TARGETS morpho6 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
