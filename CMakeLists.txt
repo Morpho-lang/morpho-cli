@@ -21,7 +21,71 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 add_executable(morpho6 "")
 
-find_package(morpho CONFIG REQUIRED)
+find_package(morpho CONFIG QUIET)
+
+# Compatibility shim for Morpho builds that predate the CMake package.
+if(NOT TARGET morpho::morpho)
+    message(STATUS "morpho CMake package not found; searching likely install paths")
+
+    # Locate the morpho.h header file and store in MORPHO_HEADER
+    find_file(MORPHO_HEADER
+              morpho.h
+              HINTS
+              /usr/local/include/
+              /usr/local/include/morpho
+              /opt/homebrew/include/
+              /opt/homebrew/include/morpho
+              /home/linuxbrew/.linuxbrew/include/
+              /home/linuxbrew/.linuxbrew/include/morpho
+              "C:/Program Files/Morpho/include/morpho"
+              )
+    if(NOT MORPHO_HEADER)
+        unset(MORPHO_HEADER CACHE)
+        message(FATAL_ERROR
+            "Could not find Morpho. Install a Morpho that provides morphoConfig.cmake, "
+            "or install morpho.h and libmorpho in a standard location.")
+    endif()
+    message(STATUS "Found morpho.h at ${MORPHO_HEADER}")
+
+    # Identify folder that morpho.h is located in from MORPHO_HEADER and store in MORPHO_INCLUDE
+    get_filename_component(MORPHO_INCLUDE ${MORPHO_HEADER} DIRECTORY)
+
+    set(_morpho_includes ${MORPHO_INCLUDE})
+    message(STATUS "Including directory ${MORPHO_INCLUDE}")
+
+    # Add morpho headers in subfolders to MORPHO_INCLUDE
+    file(GLOB morpho_subdirectories LIST_DIRECTORIES true ${MORPHO_INCLUDE}/*)
+    foreach(dir ${morpho_subdirectories})
+        if(IS_DIRECTORY ${dir})
+            list(APPEND _morpho_includes ${dir})
+            message(STATUS "Including directory ${dir}")
+        endif()
+    endforeach()
+
+    # Locate libmorpho
+    find_library(MORPHO_LIBRARY
+        NAMES morpho libmorpho
+        HINTS
+        "C:/Program Files/Morpho/lib/"
+    )
+    if(NOT MORPHO_LIBRARY)
+        unset(MORPHO_LIBRARY CACHE)
+        message(FATAL_ERROR
+            "Found morpho.h at ${MORPHO_HEADER} but could not find the morpho library.")
+    endif()
+    message(STATUS "Found morpho library at ${MORPHO_LIBRARY}")
+
+    add_library(morpho::morpho UNKNOWN IMPORTED)
+    set_target_properties(morpho::morpho PROPERTIES
+        IMPORTED_LOCATION "${MORPHO_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_morpho_includes}"
+    )
+
+    unset(_morpho_includes)
+    unset(morpho_subdirectories)
+    unset(dir)
+endif()
+
 target_link_libraries(morpho6 PRIVATE morpho::morpho)
 
 # Copy morpho.dll next to the executable.
